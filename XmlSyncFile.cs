@@ -32,6 +32,7 @@ sealed class XmlSyncFile : IDisposable
         _xml.WriteElementString("SourceDirectory", options.SourceDirectory);
         _xml.WriteElementString("DestDirectory", options.DestinationDirectory);
 
+        _xml.Flush();
         _text.WriteLine();
     }
 
@@ -80,18 +81,24 @@ sealed class XmlSyncFile : IDisposable
         if (!orphanSourceFiles.Any())
             return;
 
+        _xml.Flush();
+
         _text.WriteLine();
         _xml.WriteComment("""
             
             The following files are in the source, but have no matching file in the destination.
+
             Maybe they got deleted or renamed.
+
+            You can change the <Ignore> tag to a <Copy> tag and specify a valid destination to copy the file.
         
         """);
+        _xml.Flush();
         _text.WriteLine();
 
         foreach (var filePath in orphanSourceFiles)
         {
-            _xml.WriteStartElement("Copy");
+            _xml.WriteStartElement("Ignore");
             _xml.WriteElementString("Source", filePath);
             _xml.WriteComment($"<Destination></Destination>");
             _xml.WriteEndElement();
@@ -103,28 +110,86 @@ sealed class XmlSyncFile : IDisposable
     ///   in the destination repository, so the destination is ambiguous.
     /// </summary>
     /// <param name="ambiguousFiles">The collection of source files and their associated multiple candidates in the destination directory.</param>
-    public void OutputFilesInSourceAmbiguousDestination(IEnumerable<(string, MultipleFileSource)> ambiguousFiles)
+    /// <param name="ambiguousFilesCount">When this method returns, contains the number of source files that have more than one candidate destination file.</param>
+    public void OutputFilesInSourceAmbiguousDestination(IEnumerable<(string, MultipleFileDestination)> ambiguousFiles,
+                                                        out int ambiguousFilesCount)
     {
-        if (!ambiguousFiles.Any())
+        ambiguousFilesCount = 0;
+
+        if (ambiguousFiles.TryGetNonEnumeratedCount(out int count) && count == 0 ||
+            !ambiguousFiles.Any())
             return;
+
+        _xml.Flush();
 
         _text.WriteLine();
         _xml.WriteComment("""
             
             The following files are in the source, but have multiple candidates in the destination.
+
+            You can change the <Ignore> tag to a <Copy> tag and select just one of the possible
+            destinations (or duplicate the entry for each) to copy the file.
         
         """);
+        _xml.Flush();
         _text.WriteLine();
 
         foreach (var (filePath, candidates) in ambiguousFiles)
         {
-            _xml.WriteStartElement("Copy");
+            _xml.WriteStartElement("Ignore");
             _xml.WriteElementString("Source", filePath);
 
             foreach (var destPath in candidates)
                 _xml.WriteComment($"<Destination>{destPath}</Destination>");
 
             _xml.WriteEndElement();
+
+            ambiguousFilesCount++;
+        }
+    }
+
+    /// <summary>
+    ///   Writes to the output XML the files in the source repository that had many matching files
+    ///   in the destination repository, but by discarding the other ones, are now just with one
+    ///   potentially incorrect destination left.
+    /// </summary>
+    /// <param name="potentiallyIncorrectFiles">The collection of source files and their associated candidate in the destination directory.</param>
+    /// <param name="potentiallyIncorrectFilesCount">When this method returns, contains the number of source files that have one potentially incorrect candidate destination file.</param>
+    public void OutputFilesInSourceOneAmbiguousDestinationLeft(IEnumerable<(string, string)>? potentiallyIncorrectFiles,
+                                                               out int potentiallyIncorrectFilesCount)
+    {
+        potentiallyIncorrectFilesCount = 0;
+
+        if (potentiallyIncorrectFiles is null)
+            return;
+        if (potentiallyIncorrectFiles.TryGetNonEnumeratedCount(out int count) && count == 0 ||
+            !potentiallyIncorrectFiles.Any())
+            return;
+
+        _xml.Flush();
+
+        _text.WriteLine();
+        _xml.WriteComment("""
+            
+            The following files are in the source, but have a single candidate destination that
+            is left after having discarded the others it had.
+
+            The result can be incorrect.
+
+            You can change the <Copy> tag to an <Ignore> tag if the entry is incorrect to ignore it.
+        
+        """);
+        _xml.Flush();
+        _text.WriteLine();
+
+        foreach (var (filePath, candidate) in potentiallyIncorrectFiles)
+        {
+            _xml.WriteStartElement("Copy");
+            _xml.WriteElementString("Source", filePath);
+            _xml.WriteElementString("Destination", candidate);
+            _xml.WriteEndElement();
+
+            potentiallyIncorrectFilesCount++;
         }
     }
 
@@ -134,30 +199,37 @@ sealed class XmlSyncFile : IDisposable
     /// </summary>
     /// <param name="orphanDestinationFiles">The collection of destination files not found in the source directory.</param>
     /// <param name="orphanCount">When this method returns, contains the number of orphan files found in the destination directory.</param>
-    public void WriteDestinationOrphanFiles(IEnumerable<IFileSource> orphanDestinationFiles, out int orphanCount)
+    public void WriteDestinationOrphanFiles(IEnumerable<IFileDestination> orphanDestinationFiles, out int orphanCount)
     {
         orphanCount = 0;
 
         if (!orphanDestinationFiles.Any())
             return;
 
+        _xml.Flush();
+
         _text.WriteLine();
         _xml.WriteComment("""
             
             The following files are in the destination, but not in the source.
+
             Maybe they are new additions, or renamed files.
+
+            You can check these files against the source files that have no destination to
+            complete those if needed.
         
         """);
+        _xml.Flush();
         _text.WriteLine();
         
         foreach (var destFileSource in orphanDestinationFiles)
         {
-            if (destFileSource is SingleFileSource singleFile)
+            if (destFileSource is SingleFileDestination singleFile)
             {
                 _xml.WriteComment(singleFile.FilePath);
                 orphanCount++;
             }
-            else if (destFileSource is MultipleFileSource multiFile)
+            else if (destFileSource is MultipleFileDestination multiFile)
             {
                 orphanCount += multiFile.Count;
 

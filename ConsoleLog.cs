@@ -91,10 +91,10 @@ static class ConsoleLog
         
         foreach (var (destFileName, destFileSource) in fileMap)
         {
-            if (destFileSource is SingleFileSource singleFile)
+            if (destFileSource is SingleFileDestination singleFile)
                 WriteLine(singleFile.FilePath);
 
-            else if (destFileSource is MultipleFileSource multiFile)
+            else if (destFileSource is MultipleFileDestination multiFile)
                 foreach (var fileName in multiFile)
                     WriteLine(fileName);
         }

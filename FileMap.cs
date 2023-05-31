@@ -6,9 +6,9 @@ using System.Diagnostics.CodeAnalysis;
 ///   A dictionary mapping a file name with one or more relative file paths where that file name
 ///   was found.
 /// </summary>
-class FileMap : IDictionary<string, IFileSource>
+class FileMap : IDictionary<string, IFileDestination>
 {
-    private readonly Dictionary<string, IFileSource> _fileMap;
+    private readonly Dictionary<string, IFileDestination> _fileMap;
 
     /// <summary>
     ///   Gets the number of files in the file map.
@@ -16,10 +16,10 @@ class FileMap : IDictionary<string, IFileSource>
     public int Count { get; private set; } = 0;
 
     /// <summary>
-    ///   Gets or sets the relative directory (either single -<see cref="SingleFileSource"/>- or
-    ///   more than one -<see cref="MultipleFileSource"/>) for a file name.
+    ///   Gets or sets the relative directory (either single -<see cref="SingleFileDestination"/>- or
+    ///   more than one -<see cref="MultipleFileDestination"/>) for a file name.
     /// </summary>
-    public IFileSource this[string key] 
+    public IFileDestination this[string key] 
     { 
         get => _fileMap[key]; 
         set => _fileMap[key] = value; 
@@ -32,7 +32,7 @@ class FileMap : IDictionary<string, IFileSource>
     /// <param name="capacity">The initial capacity for the file map.</param>
     public FileMap(int capacity)
     {
-        _fileMap = new Dictionary<string, IFileSource>(capacity);
+        _fileMap = new Dictionary<string, IFileDestination>(capacity);
     }
 
     /// <summary>
@@ -44,7 +44,7 @@ class FileMap : IDictionary<string, IFileSource>
         if (!files.TryGetNonEnumeratedCount(out int fileCount))
             fileCount = files.Count();
 
-        _fileMap = new Dictionary<string, IFileSource>(capacity: fileCount, StringComparer.InvariantCultureIgnoreCase);
+        _fileMap = new Dictionary<string, IFileDestination>(capacity: fileCount, StringComparer.InvariantCultureIgnoreCase);
 
         foreach(string fileRelativePath in files)
         {
@@ -64,16 +64,16 @@ class FileMap : IDictionary<string, IFileSource>
         // If the file name already exists in the map
         if (_fileMap.TryGetValue(fileName, out var existingFileSource))
         {
-            if (existingFileSource is SingleFileSource singleFileSource)
+            if (existingFileSource is SingleFileDestination singleFileSource)
             {
                 // Single path --> Now more than one
-                _fileMap[fileName] = new MultipleFileSource
+                _fileMap[fileName] = new MultipleFileDestination
                 {
                     singleFileSource.FilePath,
                     filePath
                 };
             }
-            else if (existingFileSource is MultipleFileSource multipleFileSource)
+            else if (existingFileSource is MultipleFileDestination multipleFileSource)
             {
                 // Multiple paths --> Add to the list
                 multipleFileSource.Add(filePath);
@@ -83,7 +83,7 @@ class FileMap : IDictionary<string, IFileSource>
         else
         {
             // File name unknown --> Add it to the map
-            _fileMap.Add(fileName, new SingleFileSource(filePath));
+            _fileMap.Add(fileName, new SingleFileDestination(filePath));
         }
 
         Count++;
@@ -95,12 +95,12 @@ class FileMap : IDictionary<string, IFileSource>
     /// <param name="fileName">The file name (not the path) to remove.</param>
     public bool Remove(string fileName)
     {
-        if (_fileMap.TryGetValue(fileName, out IFileSource? fileSource))
+        if (_fileMap.TryGetValue(fileName, out IFileDestination? fileSource))
         {
-            if (fileSource is SingleFileSource)
+            if (fileSource is SingleFileDestination)
                 Count--;
 
-            else if (fileSource is MultipleFileSource fileList)
+            else if (fileSource is MultipleFileDestination fileList)
                 Count -= fileList.Count;
 
             return _fileMap.Remove(fileName);
@@ -114,7 +114,7 @@ class FileMap : IDictionary<string, IFileSource>
     /// <param name="fileName">The file name (not the path) to remove.</param>
     /// <param name="fileList">The file list where the file to remove is.</param>
     /// <param name="filePathToRemove">The file path to remove.</param>
-    internal void Remove(string fileName, MultipleFileSource fileList, string filePathToRemove)
+    internal void Remove(string fileName, MultipleFileDestination fileList, string filePathToRemove)
     {
         fileList.Remove(filePathToRemove);
         Count--;
@@ -136,7 +136,7 @@ class FileMap : IDictionary<string, IFileSource>
     ///   <see langword="true"/> if the map contains a file source with the specified file name;
     ///   otherwise, <see langword="false"/>.
     /// </returns>
-    public bool TryGetValue(string fileName, [MaybeNullWhen(false)] out IFileSource fileSource)
+    public bool TryGetValue(string fileName, [MaybeNullWhen(false)] out IFileDestination fileSource)
     {
         return _fileMap.TryGetValue(fileName, out fileSource);
     }
@@ -144,61 +144,75 @@ class FileMap : IDictionary<string, IFileSource>
     #region Implementaciones de interfaz
 
     public ICollection<string> Keys => _fileMap.Keys;
-    public ICollection<IFileSource> Values => _fileMap.Values;
+    public ICollection<IFileDestination> Values => _fileMap.Values;
 
-    public bool IsReadOnly => ((ICollection<KeyValuePair<string, IFileSource>>)_fileMap).IsReadOnly;
+    public bool IsReadOnly => ((ICollection<KeyValuePair<string, IFileDestination>>)_fileMap).IsReadOnly;
 
-    void IDictionary<string, IFileSource>.Add(string key, IFileSource value)
+    void IDictionary<string, IFileDestination>.Add(string key, IFileDestination value)
     {
-        ((IDictionary<string, IFileSource>)_fileMap).Add(key, value);
+        ((IDictionary<string, IFileDestination>)_fileMap).Add(key, value);
     }
 
-    void ICollection<KeyValuePair<string, IFileSource>>.Add(KeyValuePair<string, IFileSource> item)
+    void ICollection<KeyValuePair<string, IFileDestination>>.Add(KeyValuePair<string, IFileDestination> item)
     {
-        ((IDictionary<string, IFileSource>)_fileMap).Add(item.Key, item.Value);
+        ((IDictionary<string, IFileDestination>)_fileMap).Add(item.Key, item.Value);
     }
 
-    void ICollection<KeyValuePair<string, IFileSource>>.Clear() => _fileMap.Clear();
+    void ICollection<KeyValuePair<string, IFileDestination>>.Clear() => _fileMap.Clear();
 
-    bool ICollection<KeyValuePair<string, IFileSource>>.Contains(KeyValuePair<string, IFileSource> item)
+    bool ICollection<KeyValuePair<string, IFileDestination>>.Contains(KeyValuePair<string, IFileDestination> item)
     {
-        return ((ICollection<KeyValuePair<string, IFileSource>>)_fileMap).Contains(item);
+        return ((ICollection<KeyValuePair<string, IFileDestination>>)_fileMap).Contains(item);
     }
 
-    bool IDictionary<string, IFileSource>.ContainsKey(string key) => _fileMap.ContainsKey(key);
+    bool IDictionary<string, IFileDestination>.ContainsKey(string key) => _fileMap.ContainsKey(key);
 
-    void ICollection<KeyValuePair<string, IFileSource>>.CopyTo(KeyValuePair<string, IFileSource>[] array, int arrayIndex)
+    void ICollection<KeyValuePair<string, IFileDestination>>.CopyTo(KeyValuePair<string, IFileDestination>[] array, int arrayIndex)
     {
-        ((ICollection<KeyValuePair<string, IFileSource>>)_fileMap).CopyTo(array, arrayIndex);
+        ((ICollection<KeyValuePair<string, IFileDestination>>)_fileMap).CopyTo(array, arrayIndex);
     }
 
-    bool ICollection<KeyValuePair<string, IFileSource>>.Remove(KeyValuePair<string, IFileSource> item)
+    bool ICollection<KeyValuePair<string, IFileDestination>>.Remove(KeyValuePair<string, IFileDestination> item)
     {
-        return ((ICollection<KeyValuePair<string, IFileSource>>)_fileMap).Remove(item);
+        return ((ICollection<KeyValuePair<string, IFileDestination>>)_fileMap).Remove(item);
     }
 
-    public IEnumerator<KeyValuePair<string, IFileSource>> GetEnumerator() => _fileMap.GetEnumerator();
+    public IEnumerator<KeyValuePair<string, IFileDestination>> GetEnumerator() => _fileMap.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => _fileMap.GetEnumerator();
 
     #endregion
 }
 
-#region File source types
+#region File destination types
 
 /// <summary>
-///   Base interface for a file source (either single -<see cref="SingleFileSource"/>- or
-///   more than one -<see cref="MultipleFileSource"/>) for a file name.
+///   Base interface for a file source (either single -<see cref="SingleFileDestination"/>- or
+///   more than one -<see cref="MultipleFileDestination"/>) for a file name.
 /// </summary>
-interface IFileSource { }
+interface IFileDestination { }
 
 /// <summary>
 ///   A single file source for a file name.
 /// </summary>
-sealed record class SingleFileSource(string FilePath) : IFileSource;
+sealed record class SingleFileDestination(string FilePath) : IFileDestination
+{
+    public override string ToString() => FilePath;
+    public static implicit operator string(SingleFileDestination sfd) => sfd.FilePath;
+}
 
 /// <summary>
 ///   A list of file sources for a file name.
 /// </summary>
-sealed class MultipleFileSource : List<string>, IFileSource { }
+sealed class MultipleFileDestination : List<string>, IFileDestination
+{
+    /// <summary>
+    ///   Searches for a file with the same relative path as the provided source file path,
+    ///   and returns the first occurrence within the entire list.
+    /// </summary>
+    public string? Find(string sourceFilePath)
+    {
+        return Find(path => string.Compare(path, sourceFilePath, StringComparison.InvariantCultureIgnoreCase) == 0);
+    }
+}
 
 #endregion

@@ -16,7 +16,7 @@ internal class Program
         if (args.Length == 0)
         {
             WriteLine("  Uso:");
-            WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<RutaSyncXml>]");
+            WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<Opciones>]");
             WriteLine("    CodeSync Sync <SyncXml>");
             WriteLine();
 
@@ -60,22 +60,37 @@ internal class Program
         if (args.Length == 1)
         {
             WriteLine("  Uso:");
-            WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<RutaSyncXml>]");
+            WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<Opciones>]");
 
             WriteLine();
             WriteLine("""
                     CodeSync analizará los archivos en el directorio especificado por
                     <RutaOrigen> y todos sus subdirectorios, y también los archivos en
-                    <RutaDestino> y todos sus subdirectorios, generando un archivo de
-                    resumen XML donde se especifica la ruta original de un archivo y la
-                    ruta de destino en el repositorio de destino.
+                    <RutaDestino> y todos sus subdirectorios, generando un resumen donde
+                    especifica la ruta original de un archivo y la ruta de destino en el
+                    repositorio de destino, así como cualquier posible incidencia.
 
-                    Dicho archivo XML se puede usar más tarde con el comando Sync para
-                    sincronizar dos repositorios.
+                    Opciones:
+                      --output <ArchivoXml>
+                            -o <ArchivoXml>
+                            
+                            Genera un archivo XML donde se especifica la ruta original
+                            de un archivo y la ruta en el repositorio de destino donde
+                            se debe copiar.
 
-                    Los archivos que no tengan coincidencia directa en los dos repositorios
-                    se marcarán para que el usuario pueda especificar si son archivos
-                    renombrados, nuevos, etc.
+                            Dicho archivo se puede usar más tarde con el comando Sync
+                            para sincronizar dos repositorios.
+
+                            Los archivos que no tengan coincidencia directa en los dos
+                            repositorios se marcarán para que el usuario pueda especificar
+                            si son archivos renombrados, nuevos, etc.
+
+                      --hash
+                          -h
+                        
+                            Para determinar mejor la coincidencia de archivos en origen
+                            y destino, compara los contenidos de los archivos mediante
+                            una firma hash.
                 """);
             
             WriteLine();
