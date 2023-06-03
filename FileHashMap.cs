@@ -16,11 +16,11 @@ class FileHashMap : IDictionary<int, IList<FileHashInfo>>
     /// <summary>
     ///   Gets or sets the collection of files that share a specific hash code.
     /// </summary>
-    public IList<FileHashInfo> this[int hash] 
-    { 
-        get => _fileHashMap[hash]; 
-        set => _fileHashMap[hash] = value; 
-    }  
+    public IList<FileHashInfo> this[int hash]
+    {
+        get => _fileHashMap[hash];
+        set => _fileHashMap[hash] = value;
+    }
 
 
     /// <summary>
@@ -67,7 +67,7 @@ class FileHashMap : IDictionary<int, IList<FileHashInfo>>
         return _fileHashMap.TryGetValue(fileHash, out files);
     }
 
-    #region Implementaciones de interfaz
+    #region Interface implementations
 
     public ICollection<int> Keys => _fileHashMap.Keys;
     public ICollection<IList<FileHashInfo>> Values => _fileHashMap.Values;

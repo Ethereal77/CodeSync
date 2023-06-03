@@ -3,6 +3,7 @@ using static ConsoleLog;
 
 using static FileEnumerator;
 using static FileAnalyzer;
+using static FileSynchronizer;
 
 internal class Program
 {
@@ -27,8 +28,7 @@ internal class Program
 
         if (command == "analyze")
         {
-            var options = ReadArgumentsForAnalyze(args);
-            if (options.SourceDirectory is null)
+            if (!ReadArgumentsForAnalyze(args.AsSpan(1), out var options))
                 return;
 
             WriteLine($"Analizando coincidencias...");
@@ -38,12 +38,13 @@ internal class Program
         }
         else if (command == "sync")
         {
-            var syncXmlPath = Path.GetFullPath(args[1]);
-            if (File.Exists(syncXmlPath) == false)
-            {
-                LogError("El archivo de resumen XML especificado no existe.");
+            if (!ReadArgumentsForSynchronize(args.AsSpan(1), out var options))
                 return;
-            }
+
+            WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
+            WriteLine();
+
+            Synchronize(options);
         }
         else
         {
@@ -55,9 +56,11 @@ internal class Program
     //
     // Reads the command line arguments for the Analyze command, and validates them.
     //
-    static FileAnalyzerOptions ReadArgumentsForAnalyze(string[] args)
+    static bool ReadArgumentsForAnalyze(ReadOnlySpan<string> args, out FileAnalyzerOptions options)
     {
-        if (args.Length == 1)
+        options = default;
+
+        if (args.Length == 0)
         {
             WriteLine("  Uso:");
             WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<Opciones>]");
@@ -73,7 +76,7 @@ internal class Program
                     Opciones:
                       --output <ArchivoXml>
                             -o <ArchivoXml>
-                            
+
                             Genera un archivo XML donde se especifica la ruta original
                             de un archivo y la ruta en el repositorio de destino donde
                             se debe copiar.
@@ -87,53 +90,55 @@ internal class Program
 
                       --hash
                           -h
-                        
+
                             Para determinar mejor la coincidencia de archivos en origen
                             y destino, compara los contenidos de los archivos mediante
                             una firma hash.
                 """);
-            
+
             WriteLine();
-            return default;
+            return false;
         }
 
-        if (args.Length < 3)
+        if (args.Length < 2)
         {
             LogError("El comando Analyze debe incluir las rutas de los repositorios de origen y destino.");
-            return default;
+            return false;
         }
 
-        var sourcePath = Path.GetFullPath(args[1]);
+        var sourcePath = Path.GetFullPath(args[0]);
         if (Directory.Exists(sourcePath) == false)
         {
             LogError("El directorio de origen especificado no existe.");
-            return default;
+            return false;
         }
-        var destPath = Path.GetFullPath(args[2]);
+        var destPath = Path.GetFullPath(args[1]);
         if (Directory.Exists(destPath) == false)
         {
             LogError("El directorio de destino especificado no existe.");
-            return default;
+            return false;
         }
+
+        args = args[2..];
 
         string? outputXmlPath = null;
         bool matchByHash = false;
 
-        for (int argIndex = 3; argIndex < args.Length; argIndex++)
+        while (args.Length > 0)
         {
-            var arg = args[argIndex].ToLowerInvariant();
+            var arg = args[0].ToLowerInvariant();
 
             switch (arg)
             {
                 case "-o":
                 case "--output":
                 {
-                    if (args.Length <= argIndex + 1)
+                    if (args.Length < 2)
                     {
                         LogError("No se ha especificado el nombre del archivo XML.");
-                        return default;
+                        return false;
                     }
-                    outputXmlPath = args[++argIndex];
+                    outputXmlPath = args[1];
 
                     if (Path.GetExtension(outputXmlPath).ToLowerInvariant() is not ".xml" or "")
                         outputXmlPath += ".xml";
@@ -141,12 +146,14 @@ internal class Program
                     if (File.Exists(outputXmlPath))
                         LogWarning("El archivo XML de destino ya existe. Va a ser sobreescrito.");
 
+                    args = args[2..];
                     break;
                 }
                 case "-h":
                 case "--hash":
                 {
                     matchByHash = true;
+                    args = args[1..];
                     break;
                 }
                 default:
@@ -156,7 +163,7 @@ internal class Program
 
                         {arg}
                         """);
-                    return default;
+                    return false;
                 }
             }
         }
@@ -179,7 +186,7 @@ internal class Program
         WriteLine($"Se han encontrado {destFileMap.Count} archivos...");
         WriteLine();
 
-        return new FileAnalyzerOptions
+        options = new FileAnalyzerOptions
         {
             SourceDirectory = sourcePath,
             SourceFilesQueue = sourceFileQueue,
@@ -191,14 +198,17 @@ internal class Program
 
             OutputXmlFilePath = outputXmlPath
         };
+        return true;
     }
 
     //
     // Reads the command line arguments for the Sync command, and validates them.
     //
-    static FileAnalyzerOptions ReadArgumentsForSynchronize(string[] args)
+    static bool ReadArgumentsForSynchronize(ReadOnlySpan<string> args, out FileSynchronizerOptions options)
     {
-        if (args.Length == 1)
+        options = default;
+
+        if (args.Length == 0)
         {
             WriteLine("  Uso:");
             WriteLine("    CodeSync Sync <SyncXml>");
@@ -212,9 +222,19 @@ internal class Program
                     destino, sobreescribiendo si fuera necesario, renombrando en aquellos
                     casos en los que sea adecuado, según lo dispuesto por el archivo XML.
                 """);
+
+            WriteLine();
+            return false;
         }
 
-        WriteLine();
-        return default;
+        var inputXml = Path.GetFullPath(args[0]);
+        if (File.Exists(inputXml) == false)
+        {
+            LogError("El archivo XML especificado no existe.");
+            return false;
+        }
+
+        options = new FileSynchronizerOptions { InputXml = inputXml };
+        return true;
     }
 }

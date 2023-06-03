@@ -6,12 +6,12 @@ struct FileAnalyzerOptions
     /// <summary>
     ///   The directory where the source repository is located.
     /// </summary>
-    public required string SourceDirectory { get; init; } 
+    public required string SourceDirectory { get; init; }
     /// <summary>
     ///   The queue of files in the source repository to analyze, as enumerated by the <see cref="FileEnumerator"/>.
     /// </summary>
     public required Queue<string> SourceFilesQueue { get; init; }
-    
+
     /// <summary>
     ///   The directory where the destination repository is located.
     /// </summary>
@@ -19,7 +19,7 @@ struct FileAnalyzerOptions
     /// <summary>
     ///   The map of file names to files in the destination repository to analyze, as enumerated by the <see cref="FileEnumerator"/>.
     /// </summary>
-    public required FileMap DestinationFilesMap { get; init; } 
+    public required FileMap DestinationFilesMap { get; init; }
 
     /// <summary>
     ///   Indicates whether to compare the contents of files with a hash to verify matches between files

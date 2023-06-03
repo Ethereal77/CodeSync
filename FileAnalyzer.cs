@@ -66,16 +66,20 @@ static class FileAnalyzer
                 {
                     // No destination matches the source file path
 
+                    // Order the candidates by partial matching based on the path
+                    var destPathsRanked = OrderByPathSimilarity(sourceFilePath, multipleDestinations);
+
                     // Try to match by size / match
+                    bool hasMatchedByHash = false;
                     if (options.UseHashMatching)
                     {
                         // ⚠️ Possible match, but use size / content matching to verify
-                        HashMatchSourceFileToFileList(sourceFileName, options.SourceDirectory, sourceFilePath,
-                                                      options.DestinationDirectory, multipleDestinations);
+                        hasMatchedByHash = HashMatchSourceFileToFileList(sourceFileName, options.SourceDirectory, sourceFilePath,
+                                                                         options.DestinationDirectory, multipleDestinations, destPathsRanked);
                     }
 
                     // If after hash matching there's still candidate destinations for a source file name...
-                    if (multipleDestinations.Count > 0)
+                    if (multipleDestinations.Count > 0 && !hasMatchedByHash)
                     {
                         // ❌ The source file name is found in several places in the destination
                         filesInSourceManyInDest.Add((sourceFilePath, multipleDestinations));
@@ -83,7 +87,7 @@ static class FileAnalyzer
                 }
             }
         }
-        
+
         List<(string, string)>? filesInSourceWithOnlyOneDest = null;
 
         // Check the ambiguous files that have discarded others and now have a single candidate
@@ -97,7 +101,7 @@ static class FileAnalyzer
             var filesWithOnlyOneCandidateLeft = filesWithAnyCandidate.Where(f => f.Item2.Count == 1);
 
             filesInSourceWithOnlyOneDest = filesWithOnlyOneCandidateLeft.Select(f => (f.Item1, f.Item2[0])).ToList();
-            filesInSourceManyInDest = filesWithAnyCandidate.ToList();
+            filesInSourceManyInDest = filesWithAnyCandidate.Except(filesWithOnlyOneCandidateLeft).ToList();
         }
 
         // If there are unmatched files not matched by name, try by contents
@@ -114,7 +118,7 @@ static class FileAnalyzer
 
         xml?.Dispose();
 
-        LogStatistics(statFilesMatched, statFilesMatchedByHash,
+        LogStatistics(statFilesMatched, statFilesMatchedByHash, statFilesInSourceOneAmbiguousInDest,
                       statFilesInSourceNotInDest, statFilesInSourceMultiInDest,
                       statFilesInDestNotInSource);
 
@@ -136,7 +140,7 @@ static class FileAnalyzer
         {
             if (filesInSourceNotInDest.Count == 0)
                 return;
-            
+
             xml?.WriteSourceOrphanFiles(filesInSourceNotInDest);
         }
 
@@ -180,11 +184,54 @@ static class FileAnalyzer
         }
 
         //
+        // Ranks and orders a list of candidate destination paths according to their similarity to a
+        // source path.
+        //
+        IEnumerable<string> OrderByPathSimilarity(string sourcePath, IList<string> destinationPaths)
+        {
+            if (destinationPaths.Count < 2)
+                return destinationPaths;
+
+            // Divide the source path in directories and filenames
+            var sourcePathParts = sourcePath.Split(Path.DirectorySeparatorChar);
+            Array.Reverse(sourcePathParts);
+
+            var rankedDestPaths = new (string destination, int rank)[destinationPaths.Count];
+
+            for (int i = 0; i < destinationPaths.Count; i++)
+            {
+                var destPath = destinationPaths[i];
+
+                // Divide the destination path in directories and filenames
+                var destPathParts = destPath.Split(Path.DirectorySeparatorChar);
+                Array.Reverse(destPathParts);
+
+                // Rank the path based on how many parts match
+                var currentRank = 0;
+                for (int pathPartIndex = 0; pathPartIndex < sourcePathParts.Length && pathPartIndex < destPathParts.Length; pathPartIndex++)
+                {
+                    var sourcePart = sourcePathParts[pathPartIndex];
+                    var destPart = destPathParts[pathPartIndex];
+
+                    if (string.Compare(sourcePart, destPart, ignoreCase: true) == 0)
+                        currentRank--;
+                    else
+                        currentRank++;
+                }
+
+                rankedDestPaths[i] = (destPath, currentRank);
+            }
+
+            // Order the paths by similarity (rank). More similar paths will become before more dissimilar
+            return rankedDestPaths.OrderBy(p => p.rank).Select(p => p.destination);
+        }
+
+        //
         // Tries to match a source file to one destination file out of a candidate list based
         // on its size and / or contents hash.
         //
-        void HashMatchSourceFileToFileList(string sourceFileName, string sourceDirectory, string sourceFilePath,
-                                           string destDirectory, MultipleFileDestination destFiles)
+        bool HashMatchSourceFileToFileList(string sourceFileName, string sourceDirectory, string sourceFilePath,
+                                           string destDirectory, MultipleFileDestination destFiles, IEnumerable<string> rankedDestFiles)
         {
             var sourcePath = Path.Combine(sourceDirectory, sourceFilePath);
 
@@ -193,10 +240,8 @@ static class FileAnalyzer
 
             int? sourceHash = null;
 
-            var filesToMatch = new List<string>(destFiles);
-            filesToMatch.Reverse();
-
-            foreach (var candidate in filesToMatch)
+            // We assume the list is ranked by similarity, so the first match would be the most similar
+            foreach (var candidate in rankedDestFiles)
             {
                 var destPath = Path.Combine(destDirectory, candidate);
 
@@ -205,7 +250,7 @@ static class FileAnalyzer
 
                 if (destLength != sourceLength)
                     continue;
-                
+
                 sourceHash ??= ComputeHash(sourceHandle, sourceLength);
 
                 var destHash = ComputeHash(destHandle, destLength);
@@ -216,8 +261,12 @@ static class FileAnalyzer
                     statFilesMatchedByHash++;
 
                     destFileMap.Remove(sourceFileName, destFiles, candidate);
+                    return true;
                 }
             }
+
+            // None matches
+            return false;
         }
 
         //

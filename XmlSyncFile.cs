@@ -13,7 +13,7 @@ sealed class XmlSyncFile : IDisposable
     public XmlSyncFile(in FileAnalyzerOptions options)
     {
         ArgumentException.ThrowIfNullOrEmpty(options.OutputXmlFilePath);
-        
+
         _text = new StreamWriter(options.OutputXmlFilePath, append: false, Encoding.UTF8);
 
         var xmlSettings = new XmlWriterSettings
@@ -50,7 +50,7 @@ sealed class XmlSyncFile : IDisposable
     // Ends and closes the output XML file where the analysis is to be written.
     //
     private void EndXmlOutput()
-    {        
+    {
         _xml.WriteEndElement();
         _xml.WriteEndDocument();
 
@@ -77,7 +77,7 @@ sealed class XmlSyncFile : IDisposable
     /// </summary>
     /// <param name="orphanSourceFiles">The collection of source files not found in the destination directory.</param>
     public void WriteSourceOrphanFiles(IEnumerable<string> orphanSourceFiles)
-    {        
+    {
         if (!orphanSourceFiles.Any())
             return;
 
@@ -85,13 +85,13 @@ sealed class XmlSyncFile : IDisposable
 
         _text.WriteLine();
         _xml.WriteComment("""
-            
+
             The following files are in the source, but have no matching file in the destination.
 
             Maybe they got deleted or renamed.
 
             You can change the <Ignore> tag to a <Copy> tag and specify a valid destination to copy the file.
-        
+
         """);
         _xml.Flush();
         _text.WriteLine();
@@ -124,12 +124,12 @@ sealed class XmlSyncFile : IDisposable
 
         _text.WriteLine();
         _xml.WriteComment("""
-            
+
             The following files are in the source, but have multiple candidates in the destination.
 
             You can change the <Ignore> tag to a <Copy> tag and select just one of the possible
             destinations (or duplicate the entry for each) to copy the file.
-        
+
         """);
         _xml.Flush();
         _text.WriteLine();
@@ -170,14 +170,14 @@ sealed class XmlSyncFile : IDisposable
 
         _text.WriteLine();
         _xml.WriteComment("""
-            
+
             The following files are in the source, but have a single candidate destination that
             is left after having discarded the others it had.
 
             The result can be incorrect.
 
             You can change the <Copy> tag to an <Ignore> tag if the entry is incorrect to ignore it.
-        
+
         """);
         _xml.Flush();
         _text.WriteLine();
@@ -210,18 +210,19 @@ sealed class XmlSyncFile : IDisposable
 
         _text.WriteLine();
         _xml.WriteComment("""
-            
+
             The following files are in the destination, but not in the source.
+            Also, they could not be matched by size or content.
 
             Maybe they are new additions, or renamed files.
 
             You can check these files against the source files that have no destination to
             complete those if needed.
-        
+
         """);
         _xml.Flush();
         _text.WriteLine();
-        
+
         foreach (var destFileSource in orphanDestinationFiles)
         {
             if (destFileSource is SingleFileDestination singleFile)

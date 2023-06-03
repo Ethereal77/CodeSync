@@ -19,11 +19,11 @@ class FileMap : IDictionary<string, IFileDestination>
     ///   Gets or sets the relative directory (either single -<see cref="SingleFileDestination"/>- or
     ///   more than one -<see cref="MultipleFileDestination"/>) for a file name.
     /// </summary>
-    public IFileDestination this[string key] 
-    { 
-        get => _fileMap[key]; 
-        set => _fileMap[key] = value; 
-    }  
+    public IFileDestination this[string key]
+    {
+        get => _fileMap[key];
+        set => _fileMap[key] = value;
+    }
 
 
     /// <summary>
@@ -52,7 +52,7 @@ class FileMap : IDictionary<string, IFileDestination>
         }
     }
 
- 
+
     /// <summary>
     ///   Adds a file to the map.
     /// </summary>
@@ -141,7 +141,7 @@ class FileMap : IDictionary<string, IFileDestination>
         return _fileMap.TryGetValue(fileName, out fileSource);
     }
 
-    #region Implementaciones de interfaz
+    #region Interface implementations
 
     public ICollection<string> Keys => _fileMap.Keys;
     public ICollection<IFileDestination> Values => _fileMap.Values;

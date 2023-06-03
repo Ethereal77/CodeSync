@@ -51,7 +51,7 @@ static class FileEnumerator
             .Select(path => Path.GetRelativePath(relativeTo: directory, path))
             .Where(path => !excludedBaseDirs.Any(exclusion => path.ToLowerInvariant().StartsWith(exclusion + Path.DirectorySeparatorChar)))
             .Where(path => !excludedSubDirs.Any(exclusion => path.ToLowerInvariant().Contains(exclusion)));
-    
+
         return files;
     }
 }

@@ -1,3 +1,6 @@
+.vs/
 .vscode/
 bin/
 obj/
+launchSettings.json
+CodeSync.args.json
