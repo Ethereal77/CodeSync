@@ -1,41 +1,43 @@
 using System.Xml.Linq;
 
+using static System.Console;
 using static ConsoleLog;
+
+using static XmlSyncFormat;
 
 static class FileSynchronizer
 {
     //
-    // Analyzes the source files and the destination file map to determine possible file matches.
+    // Executes the copy operations described in a CodeSync XML file.
     //
     public static void Synchronize(in FileSynchronizerOptions options)
     {
         var xml = LoadXml(options.InputXml, out var sourceDir, out var destDir);
 
-        var filesToCopy = xml.Elements("Copy");
-
-        Console.WriteLine($"Directorio de origen: {sourceDir}");
-        Console.WriteLine($"Directorio de destino: {destDir}");
-        Console.WriteLine();
+        LogMessageAndValue("Directorio de origen: ", sourceDir);
+        LogMessageAndValue("Directorio de destino: ", destDir);
+        WriteLine();
 
         int copiedFiles = 0;
+        var filesToCopy = xml.Elements(CopyFileEntryTag);
 
         foreach (var fileToCopy in filesToCopy)
         {
             CopyFile(fileToCopy);
         }
 
-        Console.WriteLine(copiedFiles == 1 ? $"{copiedFiles} archivo copiado." : $"{copiedFiles} archivos copiados.");
-        Console.WriteLine();
+        WriteLine(copiedFiles == 1 ? $"{copiedFiles} archivo copiado." : $"{copiedFiles} archivos copiados.");
+        WriteLine();
 
         //
         // Loads the XML synchronization file.
         //
         static XElement LoadXml(string xmlFilePath, out string sourceDir, out string destDir)
         {
-            using var xmlFile = File.OpenText(xmlFilePath); // <<<< Close?
+            using var xmlFile = File.OpenText(xmlFilePath);
             var xml = XDocument.Load(xmlFile);
 
-            var codeSyncXml = xml.Element("CodeSync");
+            var codeSyncXml = xml.Element(RootTag);
 
             if (codeSyncXml is null)
             {
@@ -46,8 +48,8 @@ static class FileSynchronizer
                 return null!;
             }
 
-            var xmlSourceDir = codeSyncXml.Element("SourceDirectory");
-            var xmlDestDir = codeSyncXml.Element("DestDirectory");
+            var xmlSourceDir = codeSyncXml.Element(SourceRepositoryDirectoryTag);
+            var xmlDestDir = codeSyncXml.Element(DestinationRepositoryDirectoryTag);
 
             if (xmlSourceDir is null || xmlDestDir is null)
             {
@@ -68,8 +70,8 @@ static class FileSynchronizer
         //
         void CopyFile(XElement xmlCopy)
         {
-            var source = (string?) xmlCopy.Element("Source");
-            var dest = (string?) xmlCopy.Element("Destination");
+            var source = (string?) xmlCopy.Element(FileEntrySourceTag);
+            var dest = (string?) xmlCopy.Element(FileEntryDestinationTag);
 
             if (source is null || dest is null)
             {

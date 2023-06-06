@@ -20,6 +20,10 @@ struct FileAnalyzerOptions
     ///   The map of file names to files in the destination repository to analyze, as enumerated by the <see cref="FileEnumerator"/>.
     /// </summary>
     public required FileMap DestinationFilesMap { get; init; }
+    /// <summary>
+    ///   An optional set of file paths already known from a prior <see cref="FileAnalyzer"/> run.
+    /// </summary>
+    public IEnumerable<string>? DestinationFilesAlreadyKnown { get; init; }
 
     /// <summary>
     ///   Indicates whether to compare the contents of files with a hash to verify matches between files
@@ -33,7 +37,8 @@ struct FileAnalyzerOptions
     public bool DiscardOldFiles = false;
 
     /// <summary>
-    ///   Specifies the configuration settings for the <see cref="FileAnalyzer"/>.
+    ///   Output path where to write the resulting CodeSync XML file, or <see langword="null"/> if no output XML
+    ///   file should be generated.
     /// </summary>
     public string? OutputXmlFilePath = null;
 

@@ -7,6 +7,12 @@ static class ConsoleLog
 {
     private static readonly ConsoleColor ColorError = ConsoleColor.Red;
     private static readonly ConsoleColor ColorWarning = ConsoleColor.Yellow;
+    private static readonly ConsoleColor ColorWarningDimmed = ConsoleColor.DarkYellow;
+
+    private static readonly ConsoleColor ColorInfoDimmed = ConsoleColor.DarkGray;
+
+    private static readonly ConsoleColor ColorMatch = ConsoleColor.Green;
+    private static readonly ConsoleColor ColorMatchByHash = ConsoleColor.Cyan;
 
     private static void WriteColored(string text, ConsoleColor color)
     {
@@ -21,6 +27,12 @@ static class ConsoleLog
         ForegroundColor = color;
         WriteLine(text);
         ForegroundColor = prevColor;
+    }
+
+    public static void LogMessageAndValue(string message, string value)
+    {
+        WriteColored(message, ColorInfoDimmed);
+        WriteLine(value);
     }
 
     public static void LogError(string errorMessage)
@@ -57,7 +69,7 @@ static class ConsoleLog
 
                    """);
 
-        ForegroundColor = ConsoleColor.DarkYellow;
+        ForegroundColor = ColorWarningDimmed;
 
         foreach (var possibleMatch in possibleMatches)
             WriteLine($"          {possibleMatch}");
@@ -68,15 +80,13 @@ static class ConsoleLog
 
     public static void LogMatch(string fileName, string sourcePath, string destPath, bool hashMatch)
     {
-        WriteLineColored(fileName, hashMatch ? ConsoleColor.Cyan : ConsoleColor.Green);
+        WriteLineColored(fileName, hashMatch ? ColorMatchByHash : ColorMatch);
 
         if (hashMatch)
-            WriteLineColored($"  ⚠️ Se determinó la coincidencia comparando el contenido de los archivos.", ConsoleColor.DarkGray);
+            WriteLineColored($"  ⚠️ Se determinó la coincidencia comparando el contenido de los archivos.", ColorInfoDimmed);
 
-        WriteColored($"  Origen: ", ConsoleColor.DarkGray);
-        WriteLine(sourcePath);
-        WriteColored($"  Destino: ", ConsoleColor.DarkGray);
-        WriteLine(destPath);
+        LogMessageAndValue("  Origen: ", sourcePath);
+        LogMessageAndValue("  Destino: ", destPath);
 
         WriteLine();
     }
@@ -132,12 +142,10 @@ static class ConsoleLog
 
     public static void LogCopy(string fileName, string sourcePath, string destPath)
     {
-        WriteLineColored(fileName, ConsoleColor.Green);
+        WriteLineColored(fileName, ColorMatch);
 
-        WriteColored($"  Origen: ", ConsoleColor.DarkGray);
-        WriteLine(sourcePath);
-        WriteColored($"  Destino: ", ConsoleColor.DarkGray);
-        WriteLine(destPath);
+        LogMessageAndValue("  Origen: ", sourcePath);
+        LogMessageAndValue("  Destino: ", destPath);
 
         WriteLine();
     }

@@ -12,10 +12,34 @@ static class FileAnalyzer
     //
     public static void Analyze(in FileAnalyzerOptions options)
     {
+        using XmlSyncOutputFile? xml = StartXmlOutput(options);
+
+        xml?.StartCurrentMatchesSection();
+
+        Analyze(options, xml);
+
+        //
+        // Creates the output XML file if specified.
+        //
+        static XmlSyncOutputFile? StartXmlOutput(in FileAnalyzerOptions options)
+        {
+            if (string.IsNullOrWhiteSpace(options.OutputXmlFilePath))
+                return null;
+
+            var sourceDir = options.SourceDirectory;
+            var destDir = options.DestinationDirectory;
+
+            return new XmlSyncOutputFile(options.OutputXmlFilePath, sourceDir, destDir);
+        }
+    }
+
+    //
+    // Analyzes the source files and the destination file map to determine possible file matches.
+    //
+    public static void Analyze(in FileAnalyzerOptions options, XmlSyncOutputFile? xml)
+    {
         var sourceFiles = options.SourceFilesQueue;
         var destFileMap = options.DestinationFilesMap;
-
-        XmlSyncFile? xml = options.OutputXmlFilePath is not null ? new XmlSyncFile(options) : null;
 
         var filesInSourceNotInDest = new List<string>();
         var filesInSourceManyInDest = new List<(string, MultipleFileDestination)>();
@@ -48,7 +72,6 @@ static class FileAnalyzer
             {
                 // ✅ Match: A source file has a corresponding destination file
                 OutputMatch(sourceFileName, sourceFilePath, singleDestination);
-                statFilesMatched++;
                 destFileMap.Remove(sourceFileName);
             }
             else if (destFileSource is MultipleFileDestination multipleDestinations)
@@ -58,7 +81,6 @@ static class FileAnalyzer
                 {
                     // ✅ Match: A source file has a corresponding destination file
                     OutputMatch(sourceFileName, sourceFilePath, foundDestPath);
-                    statFilesMatched++;
 
                     destFileMap.Remove(sourceFileName, multipleDestinations, foundDestPath);
                 }
@@ -111,16 +133,17 @@ static class FileAnalyzer
             HashMatchOrphanFiles(options.SourceDirectory, options.DestinationDirectory, filesInSourceNotInDest);
         }
 
+        var knownDestFiles = options.DestinationFilesAlreadyKnown;
+
         OutputFilesInSourceWithOneDestinationByDiscarding();
         OutputFilesInSourceAmbiguousDestination();
         OutputFilesInSourceNotInDestination();
         OutputFilesInDestinationNotInSource();
 
-        xml?.Dispose();
-
         LogStatistics(statFilesMatched, statFilesMatchedByHash, statFilesInSourceOneAmbiguousInDest,
                       statFilesInSourceNotInDest, statFilesInSourceMultiInDest,
                       statFilesInDestNotInSource);
+
 
         //
         // Writes to the output XML a match between a source file and a destination file.
@@ -128,6 +151,10 @@ static class FileAnalyzer
         void OutputMatch(string sourceFileName, string sourceFilePath, string destFilePath, bool hashMatch = false)
         {
             LogMatch(sourceFileName, sourceFilePath, destFilePath, hashMatch);
+
+            statFilesMatched++;
+            if (hashMatch)
+                statFilesMatchedByHash++;
 
             xml?.WriteMatch(sourceFilePath, destFilePath);
         }
@@ -153,7 +180,7 @@ static class FileAnalyzer
             if (filesInSourceManyInDest.Count == 0)
                 return;
 
-            xml?.OutputFilesInSourceAmbiguousDestination(filesInSourceManyInDest, out statFilesInSourceMultiInDest);
+            xml?.WriteSourceFilesWithAmbiguousDestination(filesInSourceManyInDest, out statFilesInSourceMultiInDest);
         }
 
         //
@@ -166,7 +193,7 @@ static class FileAnalyzer
             if ((filesInSourceWithOnlyOneDest?.Count ?? 0) == 0)
                 return;
 
-            xml?.OutputFilesInSourceOneAmbiguousDestinationLeft(filesInSourceWithOnlyOneDest, out statFilesInSourceOneAmbiguousInDest);
+            xml?.WritesSourceFilesWithOneAmbiguousDestinationLeft(filesInSourceWithOnlyOneDest, out statFilesInSourceOneAmbiguousInDest);
         }
 
         //
@@ -177,6 +204,16 @@ static class FileAnalyzer
         {
             if (destFileMap.Count == 0)
                 return;
+
+            if (knownDestFiles is not null)
+            {
+                // Discard all the known files from the orphan file list
+                foreach (var knownFile in knownDestFiles)
+                {
+                    var fileName = Path.GetFileName(knownFile);
+                    destFileMap.Remove(fileName, knownFile);
+                }
+            }
 
             LogWarningFileMapFilesRemaining(destFileMap);
 
@@ -258,7 +295,6 @@ static class FileAnalyzer
                 {
                     // ✅ Match: A source file has a corresponding destination file
                     OutputMatch(sourceFileName, sourceFilePath, candidate, hashMatch: true);
-                    statFilesMatchedByHash++;
 
                     destFileMap.Remove(sourceFileName, destFiles, candidate);
                     return true;
@@ -344,12 +380,8 @@ static class FileAnalyzer
                 {
                     var matched = CheckFileHash(single.FilePath, destDirectory);
                     if (matched)
-                    {
                         // ✅ Match: A source file has a corresponding destination file
                         destFileMap.Remove(Path.GetFileName(single.FilePath));
-                        statFilesMatched++;
-                        statFilesMatchedByHash++;
-                    }
                 }
                 else if (destFile is MultipleFileDestination multi)
                 {
@@ -357,12 +389,8 @@ static class FileAnalyzer
                     {
                         var matched = CheckFileHash(file, destDirectory);
                         if (matched)
-                        {
                             // ✅ Match: A source file has a corresponding destination file
                             destFileMap.Remove(Path.GetFileName(file), multi, file);
-                            statFilesMatched++;
-                            statFilesMatchedByHash++;
-                        }
                     }
                 }
                 else Debug.Fail("Not a single nor a multiple file source!");

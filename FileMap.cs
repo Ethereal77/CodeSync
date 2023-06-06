@@ -29,10 +29,18 @@ class FileMap : IDictionary<string, IFileDestination>
     /// <summary>
     ///   Initializes a new instance of the <see cref="FileMap"/> class.
     /// </summary>
+    public FileMap()
+    {
+        _fileMap = new Dictionary<string, IFileDestination>(StringComparer.InvariantCultureIgnoreCase);
+    }
+
+    /// <summary>
+    ///   Initializes a new instance of the <see cref="FileMap"/> class.
+    /// </summary>
     /// <param name="capacity">The initial capacity for the file map.</param>
     public FileMap(int capacity)
     {
-        _fileMap = new Dictionary<string, IFileDestination>(capacity);
+        _fileMap = new Dictionary<string, IFileDestination>(capacity, StringComparer.InvariantCultureIgnoreCase);
     }
 
     /// <summary>
@@ -106,6 +114,31 @@ class FileMap : IDictionary<string, IFileDestination>
             return _fileMap.Remove(fileName);
         }
         return false;
+    }
+
+    /// <summary>
+    ///   Removes a file from the map.
+    /// </summary>
+    /// <param name="fileName">The file name (not the path) to remove.</param>
+    /// <param name="filePathToRemove">The file path to remove.</param>
+    internal void Remove(string fileName, string filePathToRemove)
+    {
+        if (_fileMap.TryGetValue(fileName, out IFileDestination? fileSource))
+        {
+            if (fileSource is SingleFileDestination)
+            {
+                _fileMap.Remove(fileName);
+            }
+            else if (fileSource is MultipleFileDestination fileList)
+            {
+                fileList.Remove(filePathToRemove);
+
+                if (fileList.Count == 0)
+                    _fileMap.Remove(fileName);
+            }
+
+            Count--;
+        }
     }
 
     /// <summary>
