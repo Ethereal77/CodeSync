@@ -1,9 +1,14 @@
+namespace CodeSync;
+
 using System.Diagnostics;
 using System.Buffers;
 using System.IO.Hashing;
 using Microsoft.Win32.SafeHandles;
 
-using static ConsoleLog;
+using CodeSync.Xml;
+using CodeSync.Utils;
+
+using static CodeSync.Utils.ConsoleLog;
 
 static class FileAnalyzer
 {

@@ -1,3 +1,5 @@
+namespace CodeSync.Utils;
+
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 

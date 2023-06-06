@@ -1,9 +1,11 @@
+namespace CodeSync;
+
 using System.Xml.Linq;
 
 using static System.Console;
-using static ConsoleLog;
+using static CodeSync.Utils.ConsoleLog;
 
-using static XmlSyncFormat;
+using static CodeSync.Xml.XmlSyncFormat;
 
 static class FileSynchronizer
 {

@@ -1,3 +1,5 @@
+namespace CodeSync.Utils;
+
 using static System.Console;
 
 /// <summary>

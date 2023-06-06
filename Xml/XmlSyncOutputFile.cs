@@ -1,4 +1,8 @@
+namespace CodeSync.Xml;
+
 using System.Xml;
+
+using CodeSync.Utils;
 
 using static XmlSyncFormat;
 

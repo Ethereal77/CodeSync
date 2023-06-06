@@ -1,3 +1,7 @@
+namespace CodeSync;
+
+using CodeSync.Utils;
+
 /// <summary>
 ///   Specifies the configuration settings for the <see cref="FileAnalyzer"/>.
 /// </summary>

@@ -1,3 +1,5 @@
+namespace CodeSync;
+
 /// <summary>
 ///   Specifies the configuration settings for the <see cref="FileUpdater"/>.
 /// </summary>

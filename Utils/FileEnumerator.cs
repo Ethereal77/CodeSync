@@ -1,3 +1,5 @@
+namespace CodeSync.Utils;
+
 /// <summary>
 ///   A helper class that enumerates the source directories for files.
 /// </summary>

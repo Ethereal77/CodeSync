@@ -1,3 +1,5 @@
+namespace CodeSync.Xml;
+
 using System.Xml.Linq;
 
 using static XmlSyncFormat;

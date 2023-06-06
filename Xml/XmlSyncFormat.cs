@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿namespace CodeSync.Xml;
+
+using System.Text;
 
 static class XmlSyncFormat
 {

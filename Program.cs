@@ -1,7 +1,11 @@
-﻿using static System.Console;
-using static ConsoleLog;
+﻿namespace CodeSync;
 
-using static FileEnumerator;
+using CodeSync.Utils;
+
+using static System.Console;
+using static CodeSync.Utils.ConsoleLog;
+using static CodeSync.Utils.FileEnumerator;
+
 using static FileAnalyzer;
 using static FileSynchronizer;
 using static FileUpdater;
