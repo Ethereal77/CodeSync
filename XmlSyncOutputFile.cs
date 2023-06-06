@@ -143,7 +143,7 @@ sealed class XmlSyncOutputFile : IDisposable
 
         foreach (var entry in partialEntries)
         {
-            _xml.WriteStartElement(CopyFileEntryTag);
+            _xml.WriteStartElement(IgnoreFileEntryTag);
             _xml.WriteElementString(FileEntrySourceTag, entry.SourcePath ?? string.Empty);
             _xml.WriteElementString(FileEntryDestinationTag, entry.DestPath ?? string.Empty);
             _xml.WriteEndElement();

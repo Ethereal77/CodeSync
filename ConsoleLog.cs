@@ -158,4 +158,20 @@ static class ConsoleLog
 
                    """, ColorError);
     }
+
+    public static void LogCopyResults(int filesCopied, int filesWithError)
+    {
+        WriteLine(filesCopied == 1 ? $"{filesCopied} archivo copiado." : $"{filesCopied} archivos copiados.");
+
+        if (filesWithError > 0)
+        {
+            WriteLineColored("Algunos archivos no han podido ser copiados.", ColorError);
+            WriteLineColored(filesWithError == 1
+                ? "Se ha encontrado un error durante la copia."
+                : $"Se han encontrado {filesWithError} errores durante la copia.",
+                ColorError);
+        }
+
+        WriteLine();
+    }
 }

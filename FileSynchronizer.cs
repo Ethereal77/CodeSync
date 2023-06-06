@@ -19,6 +19,8 @@ static class FileSynchronizer
         WriteLine();
 
         int copiedFiles = 0;
+        int errorFiles = 0;
+
         var filesToCopy = xml.Elements(CopyFileEntryTag);
 
         foreach (var fileToCopy in filesToCopy)
@@ -26,8 +28,10 @@ static class FileSynchronizer
             CopyFile(fileToCopy);
         }
 
-        WriteLine(copiedFiles == 1 ? $"{copiedFiles} archivo copiado." : $"{copiedFiles} archivos copiados.");
-        WriteLine();
+        LogCopyResults(copiedFiles, errorFiles);
+
+        if (errorFiles > 0)
+            Environment.Exit(1);
 
         //
         // Loads the XML synchronization file.
@@ -89,10 +93,12 @@ static class FileSynchronizer
             {
                 File.Copy(sourcePath, destPath, overwrite: true);
                 LogCopy(fileName, sourcePath, destPath);
+                copiedFiles++;
             }
             catch
             {
                 LogCopyError(fileName);
+                errorFiles++;
             }
         }
     }
