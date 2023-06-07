@@ -19,8 +19,6 @@ static class FileAnalyzer
     {
         using XmlSyncOutputFile? xml = StartXmlOutput(options);
 
-        xml?.StartCurrentMatchesSection();
-
         Analyze(options, xml);
 
         //

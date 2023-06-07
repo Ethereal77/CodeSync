@@ -15,6 +15,8 @@ sealed class XmlSyncOutputFile : IDisposable
     private readonly XmlWriter _xml;
     private readonly TextWriter _text;
 
+    private bool startedCopyEntries = false;
+
     /// <summary>
     ///   Initializes a new instance of the <see cref="XmlSyncOutputFile"/> class.
     /// </summary>
@@ -73,6 +75,9 @@ sealed class XmlSyncOutputFile : IDisposable
     /// <param name="destFilePath">The destination file path.</param>
     public void WriteMatch(string sourceFilePath, string destFilePath)
     {
+        if (!startedCopyEntries)
+            StartCurrentMatchesSection();
+
         _xml.WriteStartElement(CopyFileEntryTag);
         _xml.WriteElementString(FileEntrySourceTag, sourceFilePath);
         _xml.WriteElementString(FileEntryDestinationTag, destFilePath);
@@ -103,6 +108,8 @@ sealed class XmlSyncOutputFile : IDisposable
             The following entries are new matches detected between files in the source and destination repositories.
 
         """);
+
+        startedCopyEntries = true;
     }
 
     /// <summary>

@@ -136,7 +136,6 @@ static class FileUpdater
         outputXml?.WritePreviousDestinationFilesToIgnore(inputXml.IgnoreDestinationEntries);
 
         // Run the analyzer to find matches
-        outputXml?.StartCurrentMatchesSection();
         var analyzerOptions = new FileAnalyzerOptions
         {
             SourceDirectory = sourceDir,
