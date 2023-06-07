@@ -118,11 +118,11 @@ static class ConsoleLog
         ForegroundColor = prevColor;
     }
 
-    public static void LogStatistics(int filesMatched, int filesMatchedByHash,
-                                     int filesWithManyInDestDiscardedAndOneLeft,
-                                     int filesInSourceNotInDest,
-                                     int filesInSourceMultiInDest,
-                                     int filesInDestNotInSource)
+    public static void LogAnalysisStats(int filesMatched, int filesMatchedByHash,
+                                        int filesWithManyInDestDiscardedAndOneLeft,
+                                        int filesInSourceNotInDest,
+                                        int filesInSourceMultiInDest,
+                                        int filesInDestNotInSource)
     {
         WriteLine($"Coincidencias entre origen y destino: {filesMatched}");
 

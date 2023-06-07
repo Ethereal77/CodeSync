@@ -143,7 +143,7 @@ static class FileAnalyzer
         OutputFilesInSourceNotInDestination();
         OutputFilesInDestinationNotInSource();
 
-        LogStatistics(statFilesMatched, statFilesMatchedByHash, statFilesInSourceOneAmbiguousInDest,
+        LogAnalysisStats(statFilesMatched, statFilesMatchedByHash, statFilesInSourceOneAmbiguousInDest,
                       statFilesInSourceNotInDest, statFilesInSourceMultiInDest,
                       statFilesInDestNotInSource);
 
