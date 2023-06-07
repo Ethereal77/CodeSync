@@ -9,6 +9,7 @@ using static CodeSync.Utils.FileEnumerator;
 using static FileAnalyzer;
 using static FileSynchronizer;
 using static FileUpdater;
+using static FileVerifier;
 
 internal class Program
 {
@@ -24,48 +25,64 @@ internal class Program
             WriteLine("  Uso:");
             WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<Opciones>]");
             WriteLine("    CodeSync Update <SyncXml> [<Opciones>]");
+            WriteLine("    CodeSync Verify <SyncXml> [<Opciones>]");
             WriteLine("    CodeSync Sync <SyncXml>");
             WriteLine();
 
             return;
         }
 
-        var command = args[0].ToLowerInvariant();
-
-        if (command == "analyze")
+        switch (args[0].ToLowerInvariant())
         {
-            if (!ReadArgumentsForAnalyze(args.AsSpan(1), out var options))
-                return;
+            case "analyze":
+            {
+                if (!ReadArgumentsForAnalyze(args.AsSpan(1), out var options))
+                    return;
 
-            WriteLine($"Analizando coincidencias...");
-            WriteLine();
+                WriteLine($"Analizando coincidencias...");
+                WriteLine();
 
-            Analyze(options);
-        }
-        else if (command == "sync")
-        {
-            if (!ReadArgumentsForSynchronize(args.AsSpan(1), out var options))
-                return;
+                Analyze(options);
+                break;
+            }
+            case "sync":
+            {
+                if (!ReadArgumentsForSynchronize(args.AsSpan(1), out var options))
+                    return;
 
-            WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
-            WriteLine();
+                WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
+                WriteLine();
 
-            Synchronize(options);
-        }
-        else if (command == "update")
-        {
-            if (!ReadArgumentsForUpdate(args.AsSpan(1), out var options))
-                return;
+                Synchronize(options);
+                break;
+            }
+            case "update":
+            {
+                if (!ReadArgumentsForUpdate(args.AsSpan(1), out var options))
+                    return;
 
-            WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
-            WriteLine();
+                WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
+                WriteLine();
 
-            Update(options);
-        }
-        else
-        {
-            LogError($"Comando no reconocido `{args[0]}`.");
-            WriteLine();
+                Update(options);
+                break;
+            }
+            case "verify":
+            {
+                if (!ReadArgumentsForVerify(args.AsSpan(1), out var options))
+                    return;
+
+                WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
+                WriteLine();
+
+                Verify(options);
+                break;
+            }
+
+            default:
+                LogError($"Comando no reconocido `{args[0]}`.");
+                WriteLine();
+                break;
         }
     }
 
@@ -383,6 +400,154 @@ internal class Program
 
             UseHashMatching = matchByHash,
             DiscardOldFiles = discardOlder
+        };
+        return true;
+    }
+
+    //
+    // Reads the command line arguments for the Verify command, and validates them.
+    //
+    static bool ReadArgumentsForVerify(ReadOnlySpan<string> args, out FileVerifierOptions options)
+    {
+        options = default;
+
+        if (args.Length == 0)
+        {
+            WriteLine("  Uso:");
+            WriteLine("    CodeSync Verify <SyncXml> [<Opciones>]");
+
+            WriteLine();
+            WriteLine("""
+                    CodeSync analizará el archivo de resumen <SyncXml> previamente generado
+                    por el comando Analyze y verificará que las entradas son correctas, que
+                    no están repetidas, que los archivos a los que hace referencia existen, etc.
+
+                    Opciones:
+                        --output <ArchivoXml>
+                              -o <ArchivoXml>
+
+                                Se genera un nuevo archivo XML con las entradas que han pasado
+                                la verificación, ordenadas.
+
+                                Dicho archivo se puede usar más tarde con el comando Sync
+                                para sincronizar dos repositorios.
+
+                        --check-repeats
+                                    -cr
+
+                                Se comprobará si existen entradas de archivos a copiar o de
+                                archivos a ignorar repetidas.
+
+                        --check-existing
+                                     -ce
+
+                                Se comprobará si los archivos a los que hacen referencia las
+                                entradas de copia o de ignorar existen físicamente.
+                                Esta opción implica `-cec` y `-cei`.
+
+                        --check-existing-copy
+                                         -cec
+
+                                Se comprobará si los archivos a los que hacen referencia las
+                                entradas de copia existen físicamente.
+
+                        --check-existing-ignore
+                                           -cei
+
+                                Se comprobará si los archivos a los que hacen referencia las
+                                entradas de ignorar existen físicamente.
+                """);
+
+            WriteLine();
+            return false;
+        }
+
+        var inputXml = Path.GetFullPath(args[0]);
+        if (File.Exists(inputXml) == false)
+        {
+            LogError("El archivo XML especificado no existe.");
+            return false;
+        }
+
+        args = args[1..];
+
+        string? outputXmlPath = null;
+        bool checkRepeats = false;
+        var checkExisting = CheckExistingEntryOption.None;
+
+        while (args.Length > 0)
+        {
+            var arg = args[0].ToLowerInvariant();
+
+            switch (arg)
+            {
+                case "-o":
+                case "--output":
+                {
+                    if (args.Length < 2)
+                    {
+                        LogError("No se ha especificado el nombre del archivo XML.");
+                        return false;
+                    }
+                    outputXmlPath = args[1];
+
+                    if (Path.GetExtension(outputXmlPath).ToLowerInvariant() is not ".xml" or "")
+                        outputXmlPath += ".xml";
+
+                    if (File.Exists(outputXmlPath))
+                        LogWarning("El archivo XML de destino ya existe. Va a ser sobreescrito.");
+
+                    args = args[2..];
+                    break;
+                }
+                case "-cr":
+                case "--check-repeats":
+                {
+                    checkRepeats = true;
+                    args = args[1..];
+                    break;
+                }
+                case "-ce":
+                case "--check-existing":
+                {
+                    checkExisting = CheckExistingEntryOption.CheckAll;
+                    args = args[1..];
+                    break;
+                }
+                case "-cec":
+                case "--check-existing-copy":
+                {
+                    checkExisting = CheckExistingEntryOption.CheckCopyEntries;
+                    args = args[1..];
+                    break;
+                }
+                case "-cei":
+                case "--check-existing-ignore":
+                {
+                    checkExisting = CheckExistingEntryOption.CheckIgnoreEntries;
+                    args = args[1..];
+                    break;
+                }
+                default:
+                {
+                    LogError($"""
+                    No se reconocen algunos de los comandos:
+
+                    {arg}
+                    """);
+                    return false;
+                }
+            }
+        }
+
+        options = new FileVerifierOptions
+        {
+            InputXml = inputXml,
+
+            OutputXmlFilePath = outputXmlPath,
+
+            DiscardRepeatedEntries = checkRepeats,
+            DiscardMissingFiles = checkExisting
         };
         return true;
     }

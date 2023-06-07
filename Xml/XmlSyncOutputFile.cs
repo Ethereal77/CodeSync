@@ -84,6 +84,22 @@ sealed class XmlSyncOutputFile : IDisposable
         _xml.WriteEndElement();
     }
 
+    /// <summary>
+    ///   Writes to the output XML an entry specifying that a source file and / or a destination file
+    ///   should be ignored.
+    /// </summary>
+    /// <param name="sourceFilePath">The source file path to ignore.</param>
+    /// <param name="destFilePath">The destination file path to ignore.</param>
+    public void WriteIgnore(string? sourceFilePath, string? destFilePath)
+    {
+        _xml.WriteStartElement(IgnoreFileEntryTag);
+        if (sourceFilePath is not null)
+            _xml.WriteElementString(FileEntrySourceTag, sourceFilePath);
+        if (destFilePath is not null)
+            _xml.WriteElementString(FileEntryDestinationTag, destFilePath);
+        _xml.WriteEndElement();
+    }
+
     //
     // Writes a header that separates the XML in sections.
     //

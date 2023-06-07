@@ -1,5 +1,7 @@
 namespace CodeSync.Utils;
 
+using CodeSync.Xml;
+
 using static System.Console;
 
 /// <summary>
@@ -174,6 +176,85 @@ static class ConsoleLog
                 ColorError);
         }
 
+        WriteLine();
+    }
+
+    public static void LogDuplicatedCopy(in CopyFileEntry fileEntry)
+    {
+        WriteLineColored($"""
+                   ATENCIÓN: La misma entrada de copia aparece duplicada.
+
+                     Origen: {fileEntry.SourcePath}
+                     Destino: {fileEntry.DestPath}
+
+                   """, ColorWarning);
+    }
+
+    public static void LogIgnoredCopy(in CopyFileEntry fileEntry)
+    {
+        WriteLineColored($"""
+                   ATENCIÓN: La entrada ha sido ignorada.
+
+                     Origen: {fileEntry.SourcePath}
+                     Destino: {fileEntry.DestPath}
+
+                   """, ColorWarning);
+    }
+
+    public static void LogMalformedCopy(in CopyFilePartialEntry fileEntry)
+    {
+        WriteLineColored($"""
+                   ERROR: La entrada no está bien formada y será ignorada.
+
+                     Origen: {fileEntry.SourcePath}
+                     Destino: {fileEntry.DestPath}
+
+                   """, ColorError);
+    }
+
+    public static void LogVerifyStats(int filesToCopy, int duplicatedCopyEntries, 
+                                      int missingSourceToCopy, int missingDestToCopy,
+                                      int malformedCopyEntries, int ignoredCopyEntries,
+                                      int sourceToIgnore, int duplicatedSourceToIgnore, int missingSourceToIgnore,
+                                      int destToIgnore, int duplicatedDestToIgnore, int missingDestToIgnore)
+    {
+        WriteLine($"Archivos a copiar: {filesToCopy}");
+        WriteLine();
+
+        if (duplicatedCopyEntries > 0)
+            WriteLine($"  Se han encotrado {duplicatedCopyEntries} entradas duplicadas.");
+        if (malformedCopyEntries > 0)
+            WriteLine($"  Se han encotrado {malformedCopyEntries} entradas incorrectas.");
+        if (ignoredCopyEntries > 0)
+            WriteLine($"  {ignoredCopyEntries} entradas ignoradas debido a órdenes de ignorar.");
+        if (missingSourceToCopy > 0)
+            WriteLine($"  {missingSourceToCopy} archivos de origen ya no existen.");
+        if (missingDestToCopy > 0)
+            WriteLine($"  {missingDestToCopy} archivos de destino ya no existen.");
+
+        if (sourceToIgnore > 0)
+        {
+            WriteLine();
+
+            WriteLine($"Archivos del directorio de origen a ignorar: {sourceToIgnore}");
+            WriteLine();
+            if (duplicatedSourceToIgnore > 0)
+                WriteLine($"  Se han encotrado {duplicatedSourceToIgnore} entradas duplicadas.");
+            if (missingSourceToIgnore > 0)
+                WriteLine($"  {missingSourceToIgnore} archivos de origen a ignorar ya no existen.");
+        }
+        if (destToIgnore > 0)
+        {
+            WriteLine();
+
+            WriteLine($"Archivos del directorio de destino a ignorar: {destToIgnore}");
+            WriteLine();
+            if (duplicatedDestToIgnore > 0)
+                WriteLine($"  Se han encotrado {duplicatedDestToIgnore} entradas duplicadas.");
+            if (missingDestToIgnore > 0)
+                WriteLine($"  {missingDestToIgnore} archivos de origen a ignorar ya no existen.");
+        }
+        
         WriteLine();
     }
 }
