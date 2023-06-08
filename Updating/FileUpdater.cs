@@ -28,6 +28,13 @@ static class FileUpdater
         LogMessageAndValue("Directorio de destino: ", destDir);
         WriteLine();
 
+        var lastModified = inputXml.ModifiedTime;
+        if (lastModified is not null)
+        {
+            LogMessageAndValue("Modificado por última vez: ", lastModified.Value.ToLongDateString());
+            WriteLine();
+        }
+
         // Create a list of partial entries (those where one of the paths or both are invalid)
         var filesToCopy = new List<CopyFileEntry>();
         var partialEntries = new List<CopyFilePartialEntry>(inputXml.PartialEntries);
@@ -127,8 +134,11 @@ static class FileUpdater
         WriteLine($"Se han ignorado {statDestFilesIgnored} archivos.");
         WriteLine();
 
+        if (options.UpdateLastModifiedTime)
+            lastModified = DateTime.UtcNow;
+
         // Create the XML output if specified, and write the still valid entries there
-        using var outputXml = StartXmlOutput(options, sourceDir, destDir);
+        using var outputXml = StartXmlOutput(options);
 
         outputXml?.WritePreviousMatches(filesToCopy);
         outputXml?.WritePreviousPartialEntries(partialEntries);
@@ -147,8 +157,7 @@ static class FileUpdater
 
             OutputXmlFilePath = options.OutputXmlFilePath,
 
-            UseHashMatching = options.UseHashMatching,
-            DiscardOldFiles = options.DiscardOldFiles
+            UseHashMatching = options.UseHashMatching
         };
         Analyze(analyzerOptions, outputXml);
 
@@ -173,12 +182,12 @@ static class FileUpdater
         //
         // Creates the output XML file if specified.
         //
-        static XmlSyncOutputFile? StartXmlOutput(in FileUpdaterOptions options, string sourceDir, string destDir)
+        XmlSyncOutputFile? StartXmlOutput(in FileUpdaterOptions options)
         {
             if (string.IsNullOrWhiteSpace(options.OutputXmlFilePath))
                 return null;
 
-            return new XmlSyncOutputFile(options.OutputXmlFilePath, sourceDir, destDir);
+            return new XmlSyncOutputFile(options.OutputXmlFilePath, sourceDir, destDir, lastModified);
         }
 
         //

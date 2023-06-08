@@ -22,6 +22,12 @@ sealed class XmlSyncInputFile
     public string DestinationDirectory { get; private set; }
 
     /// <summary>
+    ///   Gets the date and time of the last modification of the CodeSync XML file.
+    /// </summary>
+    /// <value>The last modification time; or <see langword="null"/> if unspecified.</value>
+    public DateTime? ModifiedTime { get; private set; }
+
+    /// <summary>
     ///   Gets the files to copy.
     /// </summary>
     /// <remarks>
@@ -137,6 +143,9 @@ sealed class XmlSyncInputFile
 
         SourceDirectory = (string) xmlSourceDir;
         DestinationDirectory = (string) xmlDestDir;
+
+        var xmlLastModified = codeSyncXml.Element(ModifiedTimeTag);
+        ModifiedTime = (DateTime?) xmlLastModified;
 
         _copyEntries = codeSyncXml.Elements(CopyFileEntryTag);
         _ignoreEntries = codeSyncXml.Elements(IgnoreFileEntryTag);

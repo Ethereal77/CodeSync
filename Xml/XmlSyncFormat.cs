@@ -12,9 +12,11 @@ static class XmlSyncFormat
     // <CodeSync>
     //   <SourceDirectory>path/to/source/repository</SourceDirectory>
     //   <DestDirectory>path/to/dest/repository</DestDirectory>
+    //   <ModifiedTime></ModifiedTime>
     //   ...
     internal const string SourceRepositoryDirectoryTag = "SourceDirectory";
     internal const string DestinationRepositoryDirectoryTag = "DestDirectory";
+    internal const string ModifiedTimeTag = "ModifiedTime";
 
     // <Copy>
     //   <Source>path/to/source/repository</Source>

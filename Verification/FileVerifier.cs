@@ -1,13 +1,9 @@
 ﻿namespace CodeSync;
 
 using CodeSync.Xml;
-using CodeSync.Utils;
 
 using static System.Console;
 using static CodeSync.Utils.ConsoleLog;
-using static CodeSync.Utils.FileEnumerator;
-
-using static FileAnalyzer;
 
 static class FileVerifier
 {
@@ -28,6 +24,13 @@ static class FileVerifier
         LogMessageAndValue("Directorio de origen: ", sourceDir);
         LogMessageAndValue("Directorio de destino: ", destDir);
         WriteLine();
+
+        var lastModified = inputXml.ModifiedTime;
+        if (lastModified is not null)
+        {
+            LogMessageAndValue("Modificado por última vez: ", lastModified.Value.ToLongDateString());
+            WriteLine();
+        }
 
         // Verify the directories are valid
         if (!Directory.Exists(sourceDir))
@@ -195,8 +198,11 @@ static class FileVerifier
             }
         }
 
+        if (options.UpdateLastModifiedTime)
+            lastModified = DateTime.UtcNow;
+
         // Create the XML output if specified, and write the still valid entries there
-        using var outputXml = StartXmlOutput(options, sourceDir, destDir);
+        using var outputXml = StartXmlOutput(options);
 
         if (outputXml is not null)
         {
@@ -239,12 +245,12 @@ static class FileVerifier
         //
         // Creates the output XML file if specified.
         //
-        static XmlSyncOutputFile? StartXmlOutput(in FileVerifierOptions options, string sourceDir, string destDir)
+        XmlSyncOutputFile? StartXmlOutput(in FileVerifierOptions options)
         {
             if (string.IsNullOrWhiteSpace(options.OutputXmlFilePath))
                 return null;
 
-            return new XmlSyncOutputFile(options.OutputXmlFilePath, sourceDir, destDir);
+            return new XmlSyncOutputFile(options.OutputXmlFilePath, sourceDir, destDir, lastModified);
         }
 
         //

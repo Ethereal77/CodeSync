@@ -1,5 +1,6 @@
 namespace CodeSync;
 
+using System.Diagnostics;
 using System.Xml.Linq;
 
 using static System.Console;
@@ -14,14 +15,24 @@ static class FileSynchronizer
     //
     public static void Synchronize(in FileSynchronizerOptions options)
     {
-        var xml = LoadXml(options.InputXml, out var sourceDir, out var destDir);
+        var xml = LoadXml(options.InputXml, out var sourceDir, out var destDir, out var lastModifiedXml);
 
         LogMessageAndValue("Directorio de origen: ", sourceDir);
         LogMessageAndValue("Directorio de destino: ", destDir);
         WriteLine();
 
-        int copiedFiles = 0;
-        int errorFiles = 0;
+        var dryRun = options.DryRun;
+        var ignoreOlderThanXml = options.DoNotCopyFilesOlderThanTheXml;
+        var ignoreOlderThanDest = options.DoNotCopyFilesOlderThanTheDestination;
+
+        if (lastModifiedXml is not null)
+        {
+            LogMessageAndValue("Modificado por última vez: ", lastModifiedXml.Value.ToLongDateString());
+            WriteLine();
+        }
+        else ignoreOlderThanXml = false;
+
+        int copiedFiles = 0, ignoredFiles = 0, errorFiles = 0;
 
         var filesToCopy = xml.Elements(CopyFileEntryTag);
 
@@ -30,7 +41,7 @@ static class FileSynchronizer
             CopyFile(fileToCopy);
         }
 
-        LogCopyResults(copiedFiles, errorFiles);
+        LogCopyResults(copiedFiles, errorFiles, ignoredFiles, dryRun);
 
         if (errorFiles > 0)
             Environment.Exit(1);
@@ -38,8 +49,10 @@ static class FileSynchronizer
         //
         // Loads the XML synchronization file.
         //
-        static XElement LoadXml(string xmlFilePath, out string sourceDir, out string destDir)
+        static XElement LoadXml(string xmlFilePath, out string sourceDir, out string destDir, out DateTime? lastModifiedTime)
         {
+            (sourceDir, destDir, lastModifiedTime) = (null!, null!, null);
+
             using var xmlFile = File.OpenText(xmlFilePath);
             var xml = XDocument.Load(xmlFile);
 
@@ -49,8 +62,6 @@ static class FileSynchronizer
             {
                 // ❌ The XML file is not a valid CodeSync file
                 LogError("El archivo XML especificado no es un archivo CodeSync válido.");
-                sourceDir = null!;
-                destDir = null!;
                 return null!;
             }
 
@@ -61,13 +72,15 @@ static class FileSynchronizer
             {
                 // ❌ The XML file has no valid source and / or destination directories specified
                 LogError("El archivo XML especificado no especifica directorios de origen y destino.");
-                sourceDir = null!;
-                destDir = null!;
                 return null!;
             }
 
             sourceDir = (string) xmlSourceDir;
             destDir = (string) xmlDestDir;
+
+            var xmlLastModifiedTime = codeSyncXml.Element(ModifiedTimeTag);
+            lastModifiedTime = (DateTime?) xmlLastModifiedTime;
+
             return codeSyncXml;
         }
 
@@ -93,9 +106,39 @@ static class FileSynchronizer
 
             try
             {
-                File.Copy(sourcePath, destPath, overwrite: true);
-                LogCopy(fileName, sourcePath, destPath);
-                copiedFiles++;
+                bool ignoreFileCopy = false;
+                if (ignoreOlderThanDest || ignoreOlderThanXml)
+                {
+                    var sourceFileTime = File.GetLastWriteTimeUtc(sourcePath);
+
+                    // Ignore files older than the last modification time of the XML
+                    bool isOlderThanXml = ignoreOlderThanXml && sourceFileTime < lastModifiedXml;
+
+                    // Ignore files older than the destination file
+                    var destFileTime = ignoreOlderThanDest ? File.GetLastWriteTimeUtc(destPath) : default;
+                    var isOlderThanDest = ignoreOlderThanDest && destFileTime > sourceFileTime;
+
+                    if (isOlderThanXml || isOlderThanDest)
+                    {
+                        Debug.Assert(lastModifiedXml is not null);
+
+                        LogCopyIgnored(fileName, sourcePath, destPath, sourceFileTime, 
+                                       isOlderThanXml, lastModifiedXml.Value, 
+                                       isOlderThanDest, destFileTime);
+
+                        ignoredFiles++;
+                        ignoreFileCopy = true;
+                    }
+                }
+
+                if (!ignoreFileCopy)
+                {
+                    if (!dryRun)
+                        File.Copy(sourcePath, destPath, overwrite: true);
+
+                    LogCopy(fileName, sourcePath, destPath);
+                    copiedFiles++;
+                }
             }
             catch
             {

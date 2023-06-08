@@ -23,7 +23,8 @@ sealed class XmlSyncOutputFile : IDisposable
     /// <param name="path">The path of the XML file to create.</param>
     /// <param name="sourceDir">The directory where the source repository is located.</param>
     /// <param name="destDir">The directory where the destination repository is located.</param>
-    public XmlSyncOutputFile(string path, string sourceDir, string destDir)
+    /// <param name="lastModifiedTime">The last modified time of the XML file, or <see langword="null"/> to use the current time.</param>
+    public XmlSyncOutputFile(string path, string sourceDir, string destDir, DateTime? lastModifiedTime = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
@@ -44,6 +45,10 @@ sealed class XmlSyncOutputFile : IDisposable
 
         _xml.WriteElementString(SourceRepositoryDirectoryTag, sourceDir);
         _xml.WriteElementString(DestinationRepositoryDirectoryTag, destDir);
+
+        _xml.WriteStartElement(ModifiedTimeTag);
+        _xml.WriteValue(lastModifiedTime ?? DateTime.UtcNow);
+        _xml.WriteEndElement();
     }
 
     /// <inheritdoc/>

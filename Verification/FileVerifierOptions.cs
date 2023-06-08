@@ -3,7 +3,7 @@ namespace CodeSync;
 /// <summary>
 ///   Specifies the configuration settings for the <see cref="FileVerifier"/>.
 /// </summary>
-struct FileVerifierOptions
+readonly struct FileVerifierOptions
 {
     /// <summary>
     ///   The input CodeSync XML file to verify.
@@ -13,17 +13,22 @@ struct FileVerifierOptions
     /// <summary>
     ///   Indicates whether to check if the Copy or Ignore entries are repeated.
     /// </summary>
-    public bool DiscardRepeatedEntries = true;
+    public bool DiscardRepeatedEntries { get; init; } = true;
     /// <summary>
     ///   Indicates whether to check if the referenced files do still exist.
     /// </summary>
-    public CheckExistingEntryOption DiscardMissingFiles = CheckExistingEntryOption.None;
+    public CheckExistingEntryOption DiscardMissingFiles { get; init; } = CheckExistingEntryOption.None;
 
     /// <summary>
     ///   Output path where to write the verified and reorganized CodeSync XML file,
     ///   or <see langword="null"/> if no output XML file should be generated.
     /// </summary>
-    public string? OutputXmlFilePath = null;
+    public string? OutputXmlFilePath { get; init; } = null;
+
+    /// <summary>
+    ///   Indicates whether to update the last modified time in the CodeSync XML file.
+    /// </summary>
+    public bool UpdateLastModifiedTime { get; init; } = false;
 
 
     public FileVerifierOptions() { }

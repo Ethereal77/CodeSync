@@ -26,7 +26,7 @@ internal class Program
             WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<Opciones>]");
             WriteLine("    CodeSync Update <SyncXml> [<Opciones>]");
             WriteLine("    CodeSync Verify <SyncXml> [<Opciones>]");
-            WriteLine("    CodeSync Sync <SyncXml>");
+            WriteLine("    CodeSync Sync <SyncXml> [<Opciones>]");
             WriteLine();
 
             return;
@@ -244,7 +244,7 @@ internal class Program
         if (args.Length == 0)
         {
             WriteLine("  Uso:");
-            WriteLine("    CodeSync Sync <SyncXml>");
+            WriteLine("    CodeSync Sync <SyncXml> [<Opciones>]");
 
             WriteLine();
             WriteLine("""
@@ -254,6 +254,28 @@ internal class Program
                     Se copiarán los archivos del repositorio de origen en el repositorio de
                     destino, sobreescribiendo si fuera necesario, renombrando en aquellos
                     casos en los que sea adecuado, según lo dispuesto por el archivo XML.
+
+                    Opciones:
+                      --ignore-old
+                               -io
+
+                                Aquellos archivos más antiguos que la fecha de última modificación
+                                del archivo XML se ignorarán y no serán copiados.
+
+                      --copy-new
+                              -n
+
+                                Se ignorarán aquellos archivos en el repositorio de origen que
+                                sean más antiguos que la fecha de modificación del archivo
+                                correspondiente en el repositorio de destino.
+
+                      --dry-run
+                             -d
+
+                                Se mostrarán los archivos copiados como si la operación estuviese
+                                siendo ejecutada, pero no se realizará ninguna copia realmente.
+                                Este comando es útil para comprobar la validez de la copia y hacer
+                                pruebas sin peligro de modificaciones en el sistema de archivos.
                 """);
 
             WriteLine();
@@ -267,7 +289,59 @@ internal class Program
             return false;
         }
 
-        options = new FileSynchronizerOptions { InputXml = inputXml };
+        args = args[1..];
+
+        bool discardOlderThanDest = false;
+        bool discardOlderThanXML = false;
+        bool dryRun = false;
+
+        while (args.Length > 0)
+        {
+            var arg = args[0].ToLowerInvariant();
+
+            switch (arg)
+            {
+                case "-d":
+                case "--dry-run":
+                {
+                    dryRun = true;
+                    args = args[1..];
+                    break;
+                }
+                case "-io":
+                case "--ignore-old":
+                {
+                    discardOlderThanXML = true;
+                    args = args[1..];
+                    break;
+                }
+                case "-n":
+                case "--copy-new":
+                {
+                    discardOlderThanDest = true;
+                    args = args[1..];
+                    break;
+                }
+                default:
+                {
+                    LogError($"""
+                    No se reconocen algunos de los comandos:
+
+                    {arg}
+                    """);
+                    return false;
+                }
+            }
+        }
+
+        options = new FileSynchronizerOptions
+        {
+            InputXml = inputXml,
+
+            DoNotCopyFilesOlderThanTheXml = discardOlderThanXML,
+            DoNotCopyFilesOlderThanTheDestination = discardOlderThanDest,
+            DryRun = dryRun
+        };
         return true;
     }
 
@@ -315,13 +389,12 @@ internal class Program
                         y destino, compara los contenidos de los archivos mediante
                         una firma hash.
 
-                  --discard-older
-                               -d
+                  --update-time
+                            -ut
 
-                        Se descartarán aquellos archivos en el repositorio de origen que
-                        sean más antiguos que la fecha de modificación del archivo XML o
-                        que la fecha de modificación del archivo correspondiente en el
-                        repositorio de destino.
+                        Se actualizará la fecha y hora the última modificación del archivo
+                        XML, que puede ser usada por el comando Sync para saber si debe
+                        copiar o descartar un archivo en función de su fecha de modificación.
             """);
 
             WriteLine();
@@ -339,7 +412,7 @@ internal class Program
 
         string? outputXmlPath = null;
         bool matchByHash = false;
-        bool discardOlder = false;
+        bool updateTime = false;
 
         while (args.Length > 0)
         {
@@ -373,10 +446,10 @@ internal class Program
                     args = args[1..];
                     break;
                 }
-                case "-d":
-                case "--discard-older":
+                case "-ut":
+                case "--update-time":
                 {
-                    discardOlder = true;
+                    updateTime = true;
                     args = args[1..];
                     break;
                 }
@@ -397,9 +470,9 @@ internal class Program
             InputXml = inputXml,
 
             OutputXmlFilePath = outputXmlPath,
+            UpdateLastModifiedTime = updateTime,
 
-            UseHashMatching = matchByHash,
-            DiscardOldFiles = discardOlder
+            UseHashMatching = matchByHash
         };
         return true;
     }
@@ -456,6 +529,14 @@ internal class Program
 
                                 Se comprobará si los archivos a los que hacen referencia las
                                 entradas de ignorar existen físicamente.
+
+                        --update-time
+                            -ut
+
+                                Se actualizará la fecha y hora the última modificación del archivo
+                                XML, que puede ser usada por el comando Sync para saber si debe
+                                copiar o descartar un archivo en función de su fecha de modificación.
+                                Esta opción no hará nada si no se ha especificado también `-o`.
                 """);
 
             WriteLine();
@@ -472,6 +553,7 @@ internal class Program
         args = args[1..];
 
         string? outputXmlPath = null;
+        bool updateTime = false;
         bool checkRepeats = false;
         var checkExisting = CheckExistingEntryOption.None;
 
@@ -528,6 +610,13 @@ internal class Program
                     args = args[1..];
                     break;
                 }
+                case "-ut":
+                case "--update-time":
+                {
+                    updateTime = true;
+                    args = args[1..];
+                    break;
+                }
                 default:
                 {
                     LogError($"""
@@ -545,6 +634,7 @@ internal class Program
             InputXml = inputXml,
 
             OutputXmlFilePath = outputXmlPath,
+            UpdateLastModifiedTime = updateTime,
 
             DiscardRepeatedEntries = checkRepeats,
             DiscardMissingFiles = checkExisting

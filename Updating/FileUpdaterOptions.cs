@@ -3,7 +3,7 @@ namespace CodeSync;
 /// <summary>
 ///   Specifies the configuration settings for the <see cref="FileUpdater"/>.
 /// </summary>
-struct FileUpdaterOptions
+readonly struct FileUpdaterOptions
 {
     /// <summary>
     ///   The input CodeSync XML file to update.
@@ -14,18 +14,18 @@ struct FileUpdaterOptions
     ///   Indicates whether to compare the contents of files with a hash to verify matches between files
     ///   in the source repository and files in the destination repository.
     /// </summary>
-    public bool UseHashMatching = false;
-    /// <summary>
-    ///   Indicates whether to compare the last modified time of files and discard the copying of files in the
-    ///   source repository that are older than the corresponding files in the destination repository.
-    /// </summary>
-    public bool DiscardOldFiles = false;
+    public bool UseHashMatching { get; init; }= false;
 
     /// <summary>
     ///   Output path where to write the resulting CodeSync XML file, or <see langword="null"/> if no output XML
     ///   file should be generated.
     /// </summary>
-    public string? OutputXmlFilePath = null;
+    public string? OutputXmlFilePath { get; init; }= null;
+
+    /// <summary>
+    ///   Indicates whether to update the last modified time in the CodeSync XML file.
+    /// </summary>
+    public bool UpdateLastModifiedTime { get; init; }= true;
 
     public FileUpdaterOptions() { }
 }

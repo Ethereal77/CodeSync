@@ -18,6 +18,8 @@ static class ConsoleLog
     private static readonly ConsoleColor ColorMatch = ConsoleColor.Green;
     private static readonly ConsoleColor ColorMatchByHash = ConsoleColor.Cyan;
 
+    private static readonly ConsoleColor ColorCopyIgnored = ConsoleColor.Yellow;
+
     private static void WriteColored(string text, ConsoleColor color)
     {
         var prevColor = ForegroundColor;
@@ -154,6 +156,24 @@ static class ConsoleLog
         WriteLine();
     }
 
+    public static void LogCopyIgnored(string fileName, string sourcePath, string destPath, DateTime sourceFileTime,
+                                      bool isSourceOlderThanXml, DateTime xmlLastModifiedTime,
+                                      bool isSourceOlderThanDest, DateTime destFileTime)
+    {
+        WriteLineColored(fileName, ColorCopyIgnored);
+        WriteLineColored($"  ⚠️ El archivo no ha sido copiado debido a que el archivo de origen, con fecha {sourceFileTime}:", ColorCopyIgnored);
+
+        if (isSourceOlderThanXml)
+            WriteLineColored($"    - Es más antiguo que el archivo XML {xmlLastModifiedTime}.", ColorCopyIgnored);
+        if (isSourceOlderThanDest)
+            WriteLineColored($"    - Es más antiguo que el archivo de destino {destFileTime}.", ColorCopyIgnored);
+
+        LogMessageAndValue("  Origen: ", sourcePath);
+        LogMessageAndValue("  Destino: ", destPath);
+
+        WriteLine();
+    }
+
     public static void LogCopyError(string fileName)
     {
         WriteLineColored($"""
@@ -163,9 +183,12 @@ static class ConsoleLog
                    """, ColorError);
     }
 
-    public static void LogCopyResults(int filesCopied, int filesWithError)
+    public static void LogCopyResults(int filesCopied, int filesWithError, int filesIgnored, bool dryRun)
     {
         WriteLine(filesCopied == 1 ? $"{filesCopied} archivo copiado." : $"{filesCopied} archivos copiados.");
+
+        if (filesIgnored > 0)
+            WriteLine(filesIgnored == 1 ? $"{filesIgnored} archivo ignorado." : $"{filesIgnored} archivos ignorados.");
 
         if (filesWithError > 0)
         {
@@ -175,6 +198,9 @@ static class ConsoleLog
                 : $"Se han encontrado {filesWithError} errores durante la copia.",
                 ColorError);
         }
+
+        if (dryRun)
+            WriteLineColored("El comando se ha ejecutado en modo de prueba. Ningún archivo ha sido copiado realmente.", ColorInfoDimmed);
 
         WriteLine();
     }
