@@ -16,6 +16,7 @@ sealed class XmlSyncOutputFile : IDisposable
     private readonly TextWriter _text;
 
     private bool startedCopyEntries = false;
+    private bool startedIgnoreEntries = false;
 
     /// <summary>
     ///   Initializes a new instance of the <see cref="XmlSyncOutputFile"/> class.
@@ -97,6 +98,9 @@ sealed class XmlSyncOutputFile : IDisposable
     /// <param name="destFilePath">The destination file path to ignore.</param>
     public void WriteIgnore(string? sourceFilePath, string? destFilePath)
     {
+        if (!startedIgnoreEntries)
+            StartCurrentIgnoresSection();
+
         _xml.WriteStartElement(IgnoreFileEntryTag);
         if (sourceFilePath is not null)
             _xml.WriteElementString(FileEntrySourceTag, sourceFilePath);
@@ -131,6 +135,20 @@ sealed class XmlSyncOutputFile : IDisposable
         """);
 
         startedCopyEntries = true;
+    }
+
+    /// <summary>
+    ///   Starts the section where the current files to ignore are to be written.
+    /// </summary>
+    public void StartCurrentIgnoresSection()
+    {
+        WriteSectionHeader("""
+
+            The following entries are source or destination files that have to be ignored (i.e. not copied).
+
+        """);
+
+        startedIgnoreEntries = true;
     }
 
     /// <summary>
