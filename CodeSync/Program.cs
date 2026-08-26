@@ -16,7 +16,7 @@ internal class Program
     private static void Main(string[] args)
     {
         WriteLine("CodeSync - Sincroniza los archivos de un repositorio en otro");
-        WriteLine("© Infinisis 2023");
+        WriteLine("© Infinisis 2026");
 
         WriteLine();
 
