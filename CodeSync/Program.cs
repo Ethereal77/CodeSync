@@ -1,644 +1,384 @@
-﻿namespace CodeSync;
+using System.Diagnostics;
 
-using CodeSync.Utils;
+using CodeSync.Core;
+using CodeSync.Infrastructure;
 
-using static System.Console;
-using static CodeSync.Utils.ConsoleLog;
-using static CodeSync.Utils.FileEnumerator;
+namespace CodeSync;
 
-using static FileAnalyzer;
-using static FileSynchronizer;
-using static FileUpdater;
-using static FileVerifier;
-
-internal class Program
+internal static class Program
 {
-    private static void Main(string[] args)
-    {
-        WriteLine("CodeSync - Sincroniza los archivos de un repositorio en otro");
-        WriteLine("© Infinisis 2026");
+    private const int ExitCodeSuccess = 0;
+    private const int ExitCodeError = 1;
+    private const int ExitCodeInvalidArguments = 2;
 
-        WriteLine();
+    private static readonly PhysicalWorkspace Workspace = new();
+
+    private static readonly FileScanner Scanner = new();
+    private static readonly XmlProfileStore ProfileStore = new();
+    private static readonly XmlConflictStore ConflictStore = new();
+    private static readonly XmlSkippedStore SkippedStore = new();
+
+
+    /// <summary>
+    ///   The main entry point for the CodeSync application.
+    /// </summary>
+    /// <param name="args">The command-line arguments passed to the application.</param>
+    /// <returns>The exit code indicating the result of the application's execution.</returns>
+    private static async Task<int> Main(string[] args)
+    {
+        Console.WriteLine("CodeSync - Sincroniza archivos entre dos directorios");
+        Console.WriteLine("© Infinisis 2026");
+        Console.WriteLine();
 
         if (args.Length == 0)
         {
-            WriteLine("  Uso:");
-            WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<Opciones>]");
-            WriteLine("    CodeSync Update <SyncXml> [<Opciones>]");
-            WriteLine("    CodeSync Verify <SyncXml> [<Opciones>]");
-            WriteLine("    CodeSync Sync <SyncXml> [<Opciones>]");
-            WriteLine();
-
-            return;
+            PrintUsage();
+            return ExitCodeInvalidArguments;
         }
 
-        switch (args[0].ToLowerInvariant())
+        try
         {
-            case "analyze":
+            // Determine which command to execute based on the first argument
+            var command = args[0].ToLowerInvariant();
+
+            return command switch
             {
-                if (!ReadArgumentsForAnalyze(args.AsSpan(1), out var options))
-                    return;
+                "compare" => await Compare(args),
+                "verify" => await Verify(args),
+                "copy" => Copy(args),
+                "update" => await Update(args),
 
-                WriteLine($"Analizando coincidencias...");
-                WriteLine();
-
-                Analyze(options);
-                break;
-            }
-            case "sync":
-            {
-                if (!ReadArgumentsForSynchronize(args.AsSpan(1), out var options))
-                    return;
-
-                WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
-                WriteLine();
-
-                Synchronize(options);
-                break;
-            }
-            case "update":
-            {
-                if (!ReadArgumentsForUpdate(args.AsSpan(1), out var options))
-                    return;
-
-                WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
-                WriteLine();
-
-                Update(options);
-                break;
-            }
-            case "verify":
-            {
-                if (!ReadArgumentsForVerify(args.AsSpan(1), out var options))
-                    return;
-
-                WriteLine($"Leyendo archivo XML `{Path.GetFileName(options.InputXml)}`...");
-                WriteLine();
-
-                Verify(options);
-                break;
-            }
-
-            default:
-                LogError($"Comando no reconocido `{args[0]}`.");
-                WriteLine();
-                break;
+                _ => UnknownCommand(command)
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return ExitCodeError;
         }
     }
 
-    //
-    // Reads the command line arguments for the Analyze command, and validates them.
-    //
-    static bool ReadArgumentsForAnalyze(ReadOnlySpan<string> args, out FileAnalyzerOptions options)
+    /// <summary>
+    ///   Compares the source and destination directories and generates a synchronization profile.
+    /// </summary>
+    /// <param name="args">The command-line arguments passed to the program.</param>
+    /// <returns>The exit code indicating the result of the comparison.</returns>
+    private static async Task<int> Compare(string[] args)
     {
-        options = default;
+        ReadOnlySpan<string> cliArgs = args.AsSpan(start: 1);
 
-        if (args.Length == 0)
+        if (cliArgs.Length != 3)
         {
-            WriteLine("  Uso:");
-            WriteLine("    CodeSync Analyze <RutaOrigen> <RutaDestino> [<Opciones>]");
-
-            WriteLine();
-            WriteLine("""
-                    CodeSync analizará los archivos en el directorio especificado por
-                    <RutaOrigen> y todos sus subdirectorios, y también los archivos en
-                    <RutaDestino> y todos sus subdirectorios, generando un resumen donde
-                    especifica la ruta original de un archivo y la ruta de destino en el
-                    repositorio de destino, así como cualquier posible incidencia.
-
-                    Opciones:
-                      --output <ArchivoXml>
-                            -o <ArchivoXml>
-
-                            Genera un archivo XML donde se especifica la ruta original
-                            del repositorio de origen y la ruta del repositorio de destino
-                            donde se debe copiar.
-
-                            Dicho archivo se puede usar más tarde con el comando Sync
-                            para sincronizar dos repositorios.
-
-                            Los archivos que no tengan coincidencia directa en los dos
-                            repositorios se marcarán para que el usuario pueda especificar
-                            si son archivos renombrados, nuevos, etc.
-
-                      --hash
-                          -h
-
-                            Para determinar mejor la coincidencia de archivos en origen
-                            y destino, compara los contenidos de los archivos mediante
-                            una firma hash.
-                """);
-
-            WriteLine();
-            return false;
+            Console.Error.WriteLine("Uso: CodeSync compare <source-directory> <destination-directory> <profile.xml>");
+            return ExitCodeInvalidArguments;
         }
 
-        if (args.Length < 2)
-        {
-            LogError("El comando Analyze debe incluir las rutas de los repositorios de origen y destino.");
-            return false;
-        }
+        var sourceDir = RequireDirectory(cliArgs[0], "source");
+        var destDir = RequireDirectory(cliArgs[1], "destination");
 
-        var sourcePath = Path.GetFullPath(args[0]);
-        if (Directory.Exists(sourcePath) == false)
-        {
-            LogError("El directorio de origen especificado no existe.");
-            return false;
-        }
-        var destPath = Path.GetFullPath(args[1]);
-        if (Directory.Exists(destPath) == false)
-        {
-            LogError("El directorio de destino especificado no existe.");
-            return false;
-        }
+        var profilePath = Path.GetFullPath(cliArgs[2]);
 
-        args = args[2..];
+        Console.WriteLine($"Comparando...");
+        Console.WriteLine($"  Origen: {sourceDir}");
+        Console.WriteLine($"  Destino: {destDir}");
 
-        string? outputXmlPath = null;
-        bool matchByHash = false;
+        var sourceFiles = await ScanDirectory(sourceDir, "source");
+        var destFiles = await ScanDirectory(destDir, "destination");
 
-        while (args.Length > 0)
-        {
-            var arg = args[0].ToLowerInvariant();
+        // Compare the scanned files, determining matches, conflicts, and missing files
+        var result = new FileComparer().Compare(sourceFiles, destFiles);
 
-            switch (arg)
-            {
-                case "-o":
-                case "--output":
-                {
-                    if (args.Length < 2)
-                    {
-                        LogError("No se ha especificado el nombre del archivo XML.");
-                        return false;
-                    }
-                    outputXmlPath = args[1];
+        // Compose the synchronization profile and save it
+        var profile = new SyncProfile(sourceDir, destDir,
+                                      result.DirectoryReferences, result.FileMappings);
 
-                    if (Path.GetExtension(outputXmlPath).ToLowerInvariant() is not ".xml" or "")
-                        outputXmlPath += ".xml";
+        ProfileStore.Save(profilePath, profile);
 
-                    if (File.Exists(outputXmlPath))
-                        LogWarning("El archivo XML de destino ya existe. Va a ser sobreescrito.");
+        // Save also the found conflicts to the conflict store
+        var conflicts = new ConflictSet(sourceDir, destDir, result.Conflicts);
 
-                    args = args[2..];
-                    break;
-                }
-                case "-h":
-                case "--hash":
-                {
-                    matchByHash = true;
-                    args = args[1..];
-                    break;
-                }
-                default:
-                {
-                    LogError($"""
-                        No se reconocen algunos de los comandos:
+        ConflictStore.Save(ProfileArtifacts.GetConflictsPath(profilePath), conflicts);
 
-                        {arg}
-                        """);
-                    return false;
-                }
-            }
-        }
+        Console.WriteLine();
+        Console.WriteLine($"Se han encontrado {result.FileMappings.Count} coincidencias ({result.Conflicts.Count} conflictos pendientes).");
+        Console.WriteLine("--------------------------------------------------");
+        Console.WriteLine($"Perfil de sincronización guardado en: {profilePath}");
 
-        // Analyze the source directory, converting to relative paths, and applying exclusion rules
-        WriteLine($"Buscando en el directorio de origen `{sourcePath}`...");
-
-        var sourceFiles = EnumerateFiles(sourcePath);
-        var sourceFileQueue = new Queue<string>(sourceFiles);
-
-        WriteLine($"Se han encontrado {sourceFileQueue.Count} archivos.");
-        WriteLine();
-
-        // Analyze the destination directory, converting to relative paths, and applying exclusion rules
-        WriteLine($"Buscando en el directorio de destino `{destPath}`...");
-
-        var destFiles = EnumerateFiles(destPath);
-        var destFileMap = new FileMap(destFiles);
-
-        WriteLine($"Se han encontrado {destFileMap.Count} archivos.");
-        WriteLine();
-
-        options = new FileAnalyzerOptions
-        {
-            SourceDirectory = sourcePath,
-            SourceFilesQueue = sourceFileQueue,
-
-            DestinationDirectory = destPath,
-            DestinationFilesMap = destFileMap,
-
-            UseHashMatching = matchByHash,
-
-            OutputXmlFilePath = outputXmlPath
-        };
-        return true;
+        return result.Conflicts.Count == 0 ? ExitCodeSuccess : ExitCodeError;
     }
 
-    //
-    // Reads the command line arguments for the Sync command, and validates them.
-    //
-    static bool ReadArgumentsForSynchronize(ReadOnlySpan<string> args, out FileSynchronizerOptions options)
+    /// <summary>
+    ///   Verifies a synchronization profile against the current state of the source and destination directories.
+    /// </summary>
+    /// <param name="args">The command-line arguments passed to the program.</param>
+    /// <returns>The exit code indicating the result of the verification.</returns>
+    private static async Task<int> Verify(string[] args)
     {
-        options = default;
+        ReadOnlySpan<string> cliArgs = args.AsSpan(start: 1);
 
-        if (args.Length == 0)
+        if (cliArgs.Length != 1)
         {
-            WriteLine("  Uso:");
-            WriteLine("    CodeSync Sync <SyncXml> [<Opciones>]");
-
-            WriteLine();
-            WriteLine("""
-                    CodeSync analizará el archivo de resumen <SyncXml> previamente generado
-                    por el comando Analyze y comenzará la sincronización.
-
-                    Se copiarán los archivos del repositorio de origen en el repositorio de
-                    destino, sobreescribiendo si fuera necesario, renombrando en aquellos
-                    casos en los que sea adecuado, según lo dispuesto por el archivo XML.
-
-                    Opciones:
-                      --ignore-old
-                               -io
-
-                                Aquellos archivos más antiguos que la fecha de última modificación
-                                del archivo XML se ignorarán y no serán copiados.
-
-                      --copy-new
-                              -n
-
-                                Se ignorarán aquellos archivos en el repositorio de origen que
-                                sean más antiguos que la fecha de modificación del archivo
-                                correspondiente en el repositorio de destino.
-
-                      --dry-run
-                             -d
-
-                                Se mostrarán los archivos copiados como si la operación estuviese
-                                siendo ejecutada, pero no se realizará ninguna copia realmente.
-                                Este comando es útil para comprobar la validez de la copia y hacer
-                                pruebas sin peligro de modificaciones en el sistema de archivos.
-                """);
-
-            WriteLine();
-            return false;
+            Console.Error.WriteLine("Uso: CodeSync verify <profile.xml>");
+            return ExitCodeInvalidArguments;
         }
 
-        var inputXml = Path.GetFullPath(args[0]);
-        if (File.Exists(inputXml) == false)
+        var profilePath = RequireFile(cliArgs[0], "profile");
+        var existingConflicts = ConflictStore.Load(ProfileArtifacts.GetConflictsPath(profilePath));
+
+        // Check if there are existing conflicts before proceeding with verification
+        if (existingConflicts is not null && existingConflicts.Conflicts.Count > 0)
         {
-            LogError("El archivo XML especificado no existe.");
-            return false;
+            Console.Error.WriteLine($"La verificación se cancela: hay {existingConflicts.Conflicts.Count} conflictos sin resolver.");
+            return ExitCodeError;
         }
 
-        args = args[1..];
+        // Load the synchronization profile for verification
+        var profile = ProfileStore.Load(profilePath);
 
-        bool discardOlderThanDest = false;
-        bool discardOlderThanXML = false;
-        bool dryRun = false;
+        // Scan the source and destination directories based on the loaded profile
+        var source = await ScanDirectory(profile.SourceDirectory, "source");
+        var destination = await ScanDirectory(profile.DestinationDirectory, "destination");
 
-        while (args.Length > 0)
-        {
-            var arg = args[0].ToLowerInvariant();
+        // Verify the profile against the scanned directories
+        var result = new ProfileVerifier().Verify(profile, source, destination);
 
-            switch (arg)
-            {
-                case "-d":
-                case "--dry-run":
-                {
-                    dryRun = true;
-                    args = args[1..];
-                    break;
-                }
-                case "-io":
-                case "--ignore-old":
-                {
-                    discardOlderThanXML = true;
-                    args = args[1..];
-                    break;
-                }
-                case "-n":
-                case "--copy-new":
-                {
-                    discardOlderThanDest = true;
-                    args = args[1..];
-                    break;
-                }
-                default:
-                {
-                    LogError($"""
-                    No se reconocen algunos de los comandos:
+        // Save the found conflicts to the conflict store
+        var conflicts = new ConflictSet(profile.SourceDirectory, profile.DestinationDirectory, result.Conflicts);
 
-                    {arg}
-                    """);
-                    return false;
-                }
-            }
-        }
+        ConflictStore.Save(ProfileArtifacts.GetConflictsPath(profilePath), conflicts);
 
-        options = new FileSynchronizerOptions
-        {
-            InputXml = inputXml,
+        Console.WriteLine(result.IsValid
+            ? "Verificación correcta: no se han encontrado conflictos."
+            : $"Verificación fallida: {result.Conflicts.Count} conflictos pendientes.");
 
-            DoNotCopyFilesOlderThanTheXml = discardOlderThanXML,
-            DoNotCopyFilesOlderThanTheDestination = discardOlderThanDest,
-            DryRun = dryRun
-        };
-        return true;
+        return result.IsValid ? ExitCodeSuccess : ExitCodeError;
     }
 
-    //
-    // Reads the command line arguments for the Update command, and validates them.
-    //
-    static bool ReadArgumentsForUpdate(ReadOnlySpan<string> args, out FileUpdaterOptions options)
+    /// <summary>
+    ///   Loads a valid synchronization profile (with no unresolved conflicts) and performs
+    ///   the copy operation from the source to the destination directory as defined in the profile.
+    /// </summary>
+    /// <param name="args">The command-line arguments passed to the program.</param>
+    /// <returns>The exit code indicating the result of the copy operation.</returns>
+    private static int Copy(string[] args)
     {
-        options = default;
+        ReadOnlySpan<string> cliArgs = args.AsSpan(start: 1);
 
-        if (args.Length == 0)
+        // Dry-run flag indicates whether the copy operation should be simulated without making actual changes
+        var dryRun = cliArgs.Length > 1 && cliArgs[1] is "-d" or "--dry-run";
+
+        if (cliArgs.Length < 1 || (dryRun && cliArgs.Length < 2))
         {
-            WriteLine("  Uso:");
-            WriteLine("    CodeSync Update <SyncXml> [<Opciones>]");
-
-            WriteLine();
-            WriteLine("""
-                CodeSync analizará el archivo de resumen <SyncXml> previamente generado
-                por el comando Analyze y lo actualizará.
-
-                Se recorrerán sus entradas y se descartarán aquellas que hagan referencia
-                a archivos o directorios que ya no existen.
-                A continuación se volverán a analizar los directorios de origen y destino
-                para verificar los cambios que hayan podido ocurrir en ambos.
-
-                Opciones:
-                  --output <ArchivoXml>
-                        -o <ArchivoXml>
-
-                        Se genera un nuevo archivo XML actualizado donde se especifica
-                        la ruta original del repositorio de origen y la ruta del repositorio
-                        de destino donde se debe copiar.
-
-                        Dicho archivo se puede usar más tarde con el comando Sync
-                        para sincronizar dos repositorios.
-
-                        Los archivos que no tengan coincidencia directa en los dos
-                        repositorios se marcarán para que el usuario pueda especificar
-                        si son archivos renombrados, nuevos, etc.
-
-                  --hash
-                      -h
-
-                        Para determinar mejor la coincidencia de archivos en origen
-                        y destino, compara los contenidos de los archivos mediante
-                        una firma hash.
-
-                  --update-time
-                            -ut
-
-                        Se actualizará la fecha y hora the última modificación del archivo
-                        XML, que puede ser usada por el comando Sync para saber si debe
-                        copiar o descartar un archivo en función de su fecha de modificación.
-            """);
-
-            WriteLine();
-            return false;
+            Console.Error.WriteLine("Uso: CodeSync copy <profile.xml> [--dry-run]");
+            return ExitCodeInvalidArguments;
         }
 
-        var inputXml = Path.GetFullPath(args[0]);
-        if (File.Exists(inputXml) == false)
+        var profilePath = RequireFile(cliArgs[0], "profile");
+        var conflicts = ConflictStore.Load(ProfileArtifacts.GetConflictsPath(profilePath));
+
+        // If there are unresolved conflicts, cancel the copy operation
+        if (conflicts is not null && conflicts.Conflicts.Count > 0)
         {
-            LogError("El archivo XML especificado no existe.");
-            return false;
+            Console.Error.WriteLine($"La copia se cancela: hay {conflicts.Conflicts.Count} conflictos sin resolver.");
+            return ExitCodeError;
         }
 
-        args = args[1..];
+        var profile = ProfileStore.Load(profilePath);
 
-        string? outputXmlPath = null;
-        bool matchByHash = false;
-        bool updateTime = false;
+        // Perform the copy operation using the loaded profile and the specified options
+        var result = new FileCopier().Copy(profile, Workspace, new CopyOptions(dryRun));
 
-        while (args.Length > 0)
+        if (!dryRun)
         {
-            var arg = args[0].ToLowerInvariant();
-
-            switch (arg)
-            {
-                case "-o":
-                case "--output":
-                {
-                    if (args.Length < 2)
-                    {
-                        LogError("No se ha especificado el nombre del archivo XML.");
-                        return false;
-                    }
-                    outputXmlPath = args[1];
-
-                    if (Path.GetExtension(outputXmlPath).ToLowerInvariant() is not ".xml" or "")
-                        outputXmlPath += ".xml";
-
-                    if (File.Exists(outputXmlPath))
-                        LogWarning("El archivo XML de destino ya existe. Va a ser sobreescrito.");
-
-                    args = args[2..];
-                    break;
-                }
-                case "-h":
-                case "--hash":
-                {
-                    matchByHash = true;
-                    args = args[1..];
-                    break;
-                }
-                case "-ut":
-                case "--update-time":
-                {
-                    updateTime = true;
-                    args = args[1..];
-                    break;
-                }
-                default:
-                {
-                    LogError($"""
-                        No se reconocen algunos de los comandos:
-
-                        {arg}
-                        """);
-                    return false;
-                }
-            }
+            // Save the updated profile and any skipped files if the copy operation was not a dry run
+            ProfileStore.Save(profilePath, result.UpdatedProfile);
+            SkippedStore.Save(ProfileArtifacts.GetSkippedPath(profilePath), result.SkippedSourcePaths);
         }
 
-        options = new FileUpdaterOptions
-        {
-            InputXml = inputXml,
+        // Display the status of each file involved in the copy operation.
+        foreach (var file in result.Files)
+            Console.WriteLine($"{file.Status}: {file.SourcePath} -> {file.DestinationPath ?? "(ignored)"}");
 
-            OutputXmlFilePath = outputXmlPath,
-            UpdateLastModifiedTime = updateTime,
-
-            UseHashMatching = matchByHash
-        };
-        return true;
+        return result.Succeeded ? ExitCodeSuccess : ExitCodeError;
     }
 
-    //
-    // Reads the command line arguments for the Verify command, and validates them.
-    //
-    static bool ReadArgumentsForVerify(ReadOnlySpan<string> args, out FileVerifierOptions options)
+    /// <summary>
+    ///   Loads the specified profile and updates it based on the current state of the source directory.
+    /// </summary>
+    /// <param name="args">The command-line arguments passed to the program.</param>
+    /// <returns>The exit code indicating the result of the update operation.</returns>
+    private static async Task<int> Update(string[] args)
     {
-        options = default;
+        ReadOnlySpan<string> cliArgs = args.AsSpan(start: 1);
 
-        if (args.Length == 0)
+        if (cliArgs.Length != 1)
         {
-            WriteLine("  Uso:");
-            WriteLine("    CodeSync Verify <SyncXml> [<Opciones>]");
-
-            WriteLine();
-            WriteLine("""
-                    CodeSync analizará el archivo de resumen <SyncXml> previamente generado
-                    por el comando Analyze y verificará que las entradas son correctas, que
-                    no están repetidas, que los archivos a los que hace referencia existen, etc.
-
-                    Opciones:
-                        --output <ArchivoXml>
-                              -o <ArchivoXml>
-
-                                Se genera un nuevo archivo XML con las entradas que han pasado
-                                la verificación, ordenadas.
-
-                                Dicho archivo se puede usar más tarde con el comando Sync
-                                para sincronizar dos repositorios.
-
-                        --check-repeats
-                                    -cr
-
-                                Se comprobará si existen entradas de archivos a copiar o de
-                                archivos a ignorar repetidas.
-
-                        --check-existing
-                                     -ce
-
-                                Se comprobará si los archivos a los que hacen referencia las
-                                entradas de copia o de ignorar existen físicamente.
-                                Esta opción implica `-cec` y `-cei`.
-
-                        --check-existing-copy
-                                         -cec
-
-                                Se comprobará si los archivos a los que hacen referencia las
-                                entradas de copia existen físicamente.
-
-                        --check-existing-ignore
-                                           -cei
-
-                                Se comprobará si los archivos a los que hacen referencia las
-                                entradas de ignorar existen físicamente.
-
-                        --update-time
-                            -ut
-
-                                Se actualizará la fecha y hora the última modificación del archivo
-                                XML, que puede ser usada por el comando Sync para saber si debe
-                                copiar o descartar un archivo en función de su fecha de modificación.
-                                Esta opción no hará nada si no se ha especificado también `-o`.
-                """);
-
-            WriteLine();
-            return false;
+            Console.Error.WriteLine("Uso: CodeSync update <profile.xml>");
+            return ExitCodeInvalidArguments;
         }
 
-        var inputXml = Path.GetFullPath(args[0]);
-        if (File.Exists(inputXml) == false)
+        var profilePath = RequireFile(cliArgs[0], "profile");
+        var profile = ProfileStore.Load(profilePath);
+
+        // Load the previously skipped files for this profile
+        var skippedPath = ProfileArtifacts.GetSkippedPath(profilePath);
+        var skipped = SkippedStore.Load(skippedPath);
+
+        // Scan the source directory to get the current state of the files
+        var source = await ScanDirectory(profile.SourceDirectory, "source");
+
+        // Update the profile based on the current state of the source directory and previously skipped files
+        var result = new ProfileUpdater().Update(profile, skipped, source);
+
+        foreach (var error in result.Errors)
+            Console.Error.WriteLine($"Error: {error}");
+        if (!result.Succeeded)
+            return ExitCodeError;
+
+        // Save the updated profile and clear the skipped files for this profile
+        ProfileStore.Save(profilePath, result.UpdatedProfile);
+        SkippedStore.Save(skippedPath, []);
+
+        Console.WriteLine($"Actualizados {result.UpdatedSourcePaths.Count} archivos omitidos.");
+        return ExitCodeSuccess;
+    }
+
+
+    /// <summary>
+    ///   Discovers paths, loads their ignore rules and scans the accepted files,
+    ///   returning a list of file snapshots.
+    /// </summary>
+    private static async Task<IReadOnlyList<FileSnapshot>> ScanDirectory(string rootDirectory, string label)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"Escaneando directorio ({label}): {rootDirectory}");
+
+        var timer = Stopwatch.StartNew();
+
+        var paths = Scanner.Discover(rootDirectory, Workspace);
+        var discoveryElapsed = timer.Elapsed;
+
+        Console.WriteLine($"  Se han encontrado {paths.Count} archivos en {discoveryElapsed.TotalSeconds:F1}s.");
+
+        timer.Restart();
+
+        var matcher = LoadIgnoreMatcher(rootDirectory, paths);
+        var ignoreElapsed = timer.Elapsed;
+
+        Console.WriteLine($"  Se han cargado las reglas .gitignore en {ignoreElapsed.TotalSeconds:F1}s.");
+
+        var progress = new Progress<ScanProgress>(scanProgress =>
         {
-            LogError("El archivo XML especificado no existe.");
-            return false;
-        }
-
-        args = args[1..];
-
-        string? outputXmlPath = null;
-        bool updateTime = false;
-        bool checkRepeats = false;
-        var checkExisting = CheckExistingEntryOption.None;
-
-        while (args.Length > 0)
-        {
-            var arg = args[0].ToLowerInvariant();
-
-            switch (arg)
+            switch (scanProgress.Phase)
             {
-                case "-o":
-                case "--output":
-                {
-                    if (args.Length < 2)
-                    {
-                        LogError("No se ha especificado el nombre del archivo XML.");
-                        return false;
-                    }
-                    outputXmlPath = args[1];
+                case ScanPhase.Filtering:
+                    Console.WriteLine($"  Se compararán {scanProgress.Completed} archivos de {scanProgress.Total} " +
+                                      $"({scanProgress.Ignored} archivo(s) ignorados en {scanProgress.Elapsed.TotalSeconds:F1}s)");
+                    break;
 
-                    if (Path.GetExtension(outputXmlPath).ToLowerInvariant() is not ".xml" or "")
-                        outputXmlPath += ".xml";
+                case ScanPhase.Hashing:
+                    var candidates = scanProgress.Total - scanProgress.Ignored;
+                    Console.WriteLine($"  Comparando {scanProgress.Completed} archivos de {candidates} " +
+                                      $"({scanProgress.Elapsed.TotalSeconds:F1}s)");
+                    break;
 
-                    if (File.Exists(outputXmlPath))
-                        LogWarning("El archivo XML de destino ya existe. Va a ser sobreescrito.");
-
-                    args = args[2..];
+                case ScanPhase.Completed:
+                    Console.WriteLine($"  Completado: Se han comparado {scanProgress.Completed} archivos en {scanProgress.Elapsed.TotalSeconds:F1}s.");
                     break;
-                }
-                case "-cr":
-                case "--check-repeats":
-                {
-                    checkRepeats = true;
-                    args = args[1..];
-                    break;
-                }
-                case "-ce":
-                case "--check-existing":
-                {
-                    checkExisting = CheckExistingEntryOption.CheckAll;
-                    args = args[1..];
-                    break;
-                }
-                case "-cec":
-                case "--check-existing-copy":
-                {
-                    checkExisting = CheckExistingEntryOption.CheckCopyEntries;
-                    args = args[1..];
-                    break;
-                }
-                case "-cei":
-                case "--check-existing-ignore":
-                {
-                    checkExisting = CheckExistingEntryOption.CheckIgnoreEntries;
-                    args = args[1..];
-                    break;
-                }
-                case "-ut":
-                case "--update-time":
-                {
-                    updateTime = true;
-                    args = args[1..];
-                    break;
-                }
-                default:
-                {
-                    LogError($"""
-                    No se reconocen algunos de los comandos:
-
-                    {arg}
-                    """);
-                    return false;
-                }
             }
+        });
+
+        return await Scanner.ScanAsync(rootDirectory, paths, Workspace, matcher, progress);
+    }
+
+    /// <summary>
+    ///   Loads the <c>.gitignore</c> matcher for the specified root directory.
+    /// </summary>
+    /// <param name="rootDirectory">The root directory for which to load the <c>.gitignore</c> matcher.</param>
+    /// <returns>
+    ///   An instance of <see cref="GitIgnoreMatcher"/> configured with the rules from
+    ///   the <c>.gitignore</c> files in the specified root directory and its subdirectories.
+    /// </returns>
+    private static GitIgnoreMatcher LoadIgnoreMatcher(string rootDirectory, IEnumerable<string> discoveredPaths)
+    {
+        List<IgnoreRuleSet> ruleSets =
+        [
+            // By default, ignore the .git directory
+            new(basePath: string.Empty, rules: [".git/"])
+        ];
+
+        // Compile all the .gitignore rules into the rule sets
+        foreach (var relativePath in discoveredPaths.Where(path =>
+                     string.Equals(Path.GetFileName(path), ".gitignore", StringComparison.OrdinalIgnoreCase)))
+        {
+            var normalizedPath = PathUtils.NormalizeFilePath(relativePath);
+            var fullPath = Path.Combine(rootDirectory, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
+            var basePath = PathUtils.NormalizeDirectoryPath(Path.GetDirectoryName(normalizedPath) ?? string.Empty);
+
+            ruleSets.Add(new IgnoreRuleSet(basePath, File.ReadLines(fullPath)));
         }
 
-        options = new FileVerifierOptions
-        {
-            InputXml = inputXml,
+        // Create a matcher with the compiled rule sets
+        return new GitIgnoreMatcher(ruleSets);
+    }
 
-            OutputXmlFilePath = outputXmlPath,
-            UpdateLastModifiedTime = updateTime,
 
-            DiscardRepeatedEntries = checkRepeats,
-            DiscardMissingFiles = checkExisting
-        };
-        return true;
+    /// <summary>
+    ///   Ensures that the specified path is an existing directory.
+    /// </summary>
+    /// <param name="path">The path to the directory.</param>
+    /// <param name="label">A label used in error messages.</param>
+    /// <returns>The full path to the existing directory.</returns>
+    /// <exception cref="DirectoryNotFoundException">Thrown if the specified directory does not exist.</exception>
+    private static string RequireDirectory(string path, string label)
+    {
+        var fullPath = Path.GetFullPath(path);
+
+        if (!Directory.Exists(fullPath))
+            throw new DirectoryNotFoundException($"El directorio {label} no existe: {fullPath}");
+
+        return fullPath;
+    }
+
+    /// <summary>
+    ///   Ensures that the specified path is an existing file.
+    /// </summary>
+    /// <param name="path">The path to the file.</param>
+    /// <param name="label">A label used in error messages.</param>
+    /// <returns>The full path to the existing file.</returns>
+    /// <exception cref="FileNotFoundException">Thrown if the specified file does not exist.</exception>
+    private static string RequireFile(string path, string label)
+    {
+        var fullPath = Path.GetFullPath(path);
+
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException($"El archivo {label} no existe: {fullPath}");
+
+        return fullPath;
+    }
+
+    /// <summary>
+    ///   Handles the case when an unknown command is encountered.
+    /// </summary>
+    /// <param name="command">The unknown command that was encountered.</param>
+    /// <returns>The exit code indicating an unrecognized command.</returns>
+    private static int UnknownCommand(string command)
+    {
+        Console.Error.WriteLine($"Comando no reconocido: {command}");
+        PrintUsage();
+        return 2;
+    }
+
+    /// <summary>
+    ///   Prints the usage information for the CodeSync command-line tool,
+    ///   printing the usage instructions to the console, showing the available commands and their expected arguments.
+    /// </summary>
+    private static void PrintUsage()
+    {
+        Console.WriteLine("Uso:");
+        Console.WriteLine("  CodeSync compare <source-directory> <destination-directory> <profile.xml>");
+        Console.WriteLine("  CodeSync verify <profile.xml>");
+        Console.WriteLine("  CodeSync copy <profile.xml> [--dry-run]");
+        Console.WriteLine("  CodeSync update <profile.xml>");
     }
 }

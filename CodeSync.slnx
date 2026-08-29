@@ -1,3 +1,6 @@
 <Solution>
   <Project Path="CodeSync/CodeSync.csproj" />
+  <Project Path="CodeSync.Core/CodeSync.Core.csproj" />
+  <Project Path="CodeSync.Infrastructure/CodeSync.Infrastructure.csproj" />
+  <Project Path="CodeSync.Tests/CodeSync.Tests.csproj" />
 </Solution>
