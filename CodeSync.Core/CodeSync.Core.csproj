@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="CodeSync" />
+    <InternalsVisibleTo Include="CodeSync.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Ignore" Version="0.2.1" />
   </ItemGroup>
 

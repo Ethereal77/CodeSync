@@ -17,7 +17,8 @@ internal sealed class ThrottledReporter
 
     private readonly TimeSpan _progressInterval;
     private readonly long _startedTimestamp;
-    private long _lastReportTimestamp;
+    private long _lastReportTimestamp;  // Tracks the timestamp of the last progress report
+    private int _lastReportedCompleted = -1;  // Tracks the last completed count to avoid redundant reports
 
 
     /// <summary>
@@ -53,6 +54,7 @@ internal sealed class ThrottledReporter
         long now;
         var elapsed = Stopwatch.GetElapsedTime(_lastReportTimestamp);
 
+        // Skip reporting if not forced, not completed, and within the progress interval
         if (!force && completed < _candidateCount && elapsed < _progressInterval)
             return;
 
@@ -61,10 +63,17 @@ internal sealed class ThrottledReporter
             now = Stopwatch.GetTimestamp();
             elapsed = Stopwatch.GetElapsedTime(_lastReportTimestamp);
 
+            // Skip reporting if not forced, not completed, and within the progress interval (double-check inside the lock)
             if (!force && completed < _candidateCount && elapsed < _progressInterval)
                 return;
 
+            // Skip reporting if the completed count hasn't changed since the last report
+            if (force && completed == _lastReportedCompleted)
+                return;
+
             _lastReportTimestamp = now;
+            _lastReportedCompleted = completed;
+
             _progress.Report(new ScanProgress(ScanPhase.Hashing, _total, completed, _ignored,
                                               Stopwatch.GetElapsedTime(_startedTimestamp)));
         }

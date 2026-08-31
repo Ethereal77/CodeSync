@@ -267,28 +267,16 @@ internal static class Program
 
         Console.WriteLine($"  Se han cargado las reglas .gitignore en {ignoreElapsed.TotalSeconds:F1}s.");
 
-        var progress = new Progress<ScanProgress>(scanProgress =>
+        var renderer = new ScanProgressRenderer(Console.Out, interactive: !Console.IsOutputRedirected);
+
+        try
         {
-            switch (scanProgress.Phase)
-            {
-                case ScanPhase.Filtering:
-                    Console.WriteLine($"  Se compararán {scanProgress.Completed} archivos de {scanProgress.Total} " +
-                                      $"({scanProgress.Ignored} archivo(s) ignorados en {scanProgress.Elapsed.TotalSeconds:F1}s)");
-                    break;
-
-                case ScanPhase.Hashing:
-                    var candidates = scanProgress.Total - scanProgress.Ignored;
-                    Console.WriteLine($"  Comparando {scanProgress.Completed} archivos de {candidates} " +
-                                      $"({scanProgress.Elapsed.TotalSeconds:F1}s)");
-                    break;
-
-                case ScanPhase.Completed:
-                    Console.WriteLine($"  Completado: Se han comparado {scanProgress.Completed} archivos en {scanProgress.Elapsed.TotalSeconds:F1}s.");
-                    break;
-            }
-        });
-
-        return await Scanner.ScanAsync(rootDirectory, paths, Workspace, matcher, progress);
+            return await Scanner.ScanAsync(rootDirectory, paths, Workspace, matcher, renderer);
+        }
+        finally
+        {
+            renderer.FinishDynamicLine();
+        }
     }
 
     /// <summary>
