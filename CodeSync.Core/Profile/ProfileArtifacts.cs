@@ -14,6 +14,14 @@ public static class ProfileArtifacts
         => WithSuffix(profilePath, ".conflicts.xml");
 
     /// <summary>
+    ///   Returns the full path to the content inventory associated with the specified profile path.
+    /// </summary>
+    /// <param name="profilePath">The full path to the profile file.</param>
+    /// <returns>The full path to the content inventory file associated with the profile.</returns>
+    public static string GetContentPath(string profilePath)
+        => WithSuffix(profilePath, ".content.xml");
+
+    /// <summary>
     ///   Returns the full path to the skipped sidecar file associated with the specified profile path.
     /// </summary>
     /// <param name="profilePath">The full path to the profile file.</param>

@@ -11,7 +11,7 @@ namespace CodeSync.Infrastructure;
 public sealed class XmlConflictStore : IConflictStore
 {
     /// <inheritdoc/>
-    public ConflictSet? Load(string path)
+    public ConflictDocument? Load(string path)
     {
         return File.Exists(path)
             ? XmlCodecs.DeserializeConflicts(File.ReadAllText(path, Encoding.UTF8))

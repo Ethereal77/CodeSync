@@ -18,7 +18,7 @@ public sealed record FileSnapshot
     /// <summary>
     ///   Gets the last write time of the file in UTC.
     /// </summary>
-    public DateTime LastWriteTimeUtc { get; }
+    public DateTimeOffset LastWriteTimeUtc { get; }
 
     /// <summary>
     ///   Gets the SHA-256 hash of the file.
@@ -35,11 +35,10 @@ public sealed record FileSnapshot
     /// <param name="sha256">The SHA-256 hash of the file.</param>
     /// <exception cref="ArgumentException">
     ///   Thrown when the <paramref name="path"/> is <see langword="null"/> or whitespace,
-    ///   the <paramref name="sha256"/> hash is invalid,
-    ///   or the <paramref name="lastWriteTimeUtc"/> is not UTC.
+    ///   or the <paramref name="sha256"/> hash is invalid.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when the <paramref name="size"/> is negative.</exception>
-    public FileSnapshot(string path, long size, DateTime lastWriteTimeUtc, string sha256)
+    public FileSnapshot(string path, long size, DateTimeOffset lastWriteTimeUtc, string sha256)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentOutOfRangeException.ThrowIfNegative(size);
@@ -49,9 +48,7 @@ public sealed record FileSnapshot
 
         Size = size;
 
-        LastWriteTimeUtc = lastWriteTimeUtc.Kind == DateTimeKind.Utc
-            ? lastWriteTimeUtc
-            : throw new ArgumentException("The file time must be UTC.", nameof(lastWriteTimeUtc));
+        LastWriteTimeUtc = lastWriteTimeUtc;
 
         if (sha256.Length != 64 || sha256.Any(character => !Uri.IsHexDigit(character)))
             throw new ArgumentException("A SHA-256 hash must contain 64 hexadecimal characters.", nameof(sha256));

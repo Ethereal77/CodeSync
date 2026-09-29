@@ -1,4 +1,5 @@
 using CodeSync.Core;
+using CodeSync.Infrastructure;
 
 namespace CodeSync.Tests;
 
@@ -26,48 +27,70 @@ public sealed class PipelineTests
 
         Assert.Empty(comparison.Conflicts);
 
-        var serializedProfile = XmlCodecs.SerializeProfile(profile);
-        profile = XmlCodecs.DeserializeProfile(serializedProfile);
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
 
-        var currentSource = CreateFakeFileSnapshot(path: "src/changed.cs", content: "new");
+        var timeProvider = new FakeTimeProvider(FixedTime.AddHours(1));
 
-        var workspace = new SyntheticWorkspace(
-            (currentSource, Content: "new"),
-            (unchangedSource, Content: "same"),
-            (initialDestination, Content: "old"),
-            (unchangedDestination, Content: "same"));
+        var profilePath = Path.Combine(temporaryDirectory, "profile.xml");
+        var store = new XmlProfileStore(timeProvider);
 
-        var verification = new ProfileVerifier().Verify(
-            profile,
-            sourceFiles: [currentSource, unchangedSource],
-            destinationFiles: [initialDestination, unchangedDestination]);
+        try
+        {
+            store.SaveNew(profilePath,
+                          profile,
+                          sourceFiles: [initialSource, unchangedSource],
+                          destinationFiles: [initialDestination, unchangedDestination]);
+            profile = store.Load(profilePath);
 
-        Assert.True(verification.IsValid);
+            var currentSource = CreateFakeFileSnapshot(path: "src/changed.cs", content: "new");
+            var workspace = new SyntheticWorkspace(
+                (currentSource, Content: "new"),
+                (unchangedSource, Content: "same"),
+                (initialDestination, Content: "old"),
+                (unchangedDestination, Content: "same"));
 
-        var copyResults = new FileCopier().Copy(profile, workspace);
+            var verification = new ProfileVerifier().Verify(
+                profile,
+                sourceFiles: [currentSource, unchangedSource],
+                destinationFiles: [initialDestination, unchangedDestination]);
 
-        Assert.Equal(2, copyResults.Files.Count);
-        Assert.Contains(copyResults.Files, file => file.Status == CopyFileStatus.Copied);
-        Assert.Contains(copyResults.Files, file => file.Status == CopyFileStatus.SkippedUnchanged);
+            Assert.True(verification.IsValid);
 
-        serializedProfile = XmlCodecs.SerializeProfile(copyResults.UpdatedProfile);
-        var persistedProfile = XmlCodecs.DeserializeProfile(serializedProfile);
+            var copyResults = new FileCopier().Copy(profile, workspace);
 
-        var updateResults = new ProfileUpdater().Update(
-            persistedProfile,
-            skippedSourcePaths: copyResults.SkippedSourcePaths,
-            currentSourceFiles: [currentSource, unchangedSource]);
+            Assert.Equal(2, copyResults.Files.Count);
+            Assert.Contains(copyResults.Files, file => file.Status == CopyFileStatus.Copied);
+            Assert.Contains(copyResults.Files, file => file.Status == CopyFileStatus.SkippedUnchanged);
 
-        Assert.True(updateResults.Succeeded);
-        Assert.Single(updateResults.UpdatedSourcePaths);
+            store.Save(profilePath, copyResults.UpdatedProfile);
+            var persistedProfile = store.Load(profilePath);
 
-        var singleUpdatedMapping = updateResults.UpdatedProfile.FileMappings.Single(mapping => mapping.Source!.Path == "src/changed.cs");
-        Assert.Equal(currentSource.Sha256,
-                     singleUpdatedMapping.Source!.Sha256);
+            var updateResults = new ProfileUpdater().Update(
+                persistedProfile,
+                skippedSourcePaths: copyResults.SkippedSourcePaths,
+                currentSourceFiles: [currentSource, unchangedSource]);
+
+            Assert.True(updateResults.Succeeded);
+            Assert.Single(updateResults.UpdatedSourcePaths);
+
+            store.Save(profilePath, updateResults.UpdatedProfile);
+
+            var singleUpdatedMapping = store.Load(profilePath).FileMappings
+                .Single(mapping => mapping.Source!.Path == "src/changed.cs");
+            Assert.Equal(currentSource.Sha256, singleUpdatedMapping.Source!.Sha256);
+            Assert.True(File.Exists(ProfileArtifacts.GetContentPath(profilePath)));
+            Assert.DoesNotContain("Sha256=", File.ReadAllText(profilePath));
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+        }
     }
 
 
-    private FileSnapshot CreateFakeFileSnapshot(string path, string content)
+    private static FileSnapshot CreateFakeFileSnapshot(string path, string content)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(content);
 
@@ -140,5 +163,17 @@ public sealed class PipelineTests
                 ? "source"
                 : "destination";
         }
+    }
+
+    public class FakeTimeProvider : TimeProvider
+    {
+        public FakeTimeProvider(DateTimeOffset fixedTime)
+        {
+            FixedTime = fixedTime;
+        }
+
+        public DateTimeOffset FixedTime { get; set; }
+
+        public override DateTimeOffset GetUtcNow() => FixedTime;
     }
 }

@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CodeSync.Core\CodeSync.Core.csproj" />
+    <ProjectReference Include="..\CodeSync.Infrastructure\CodeSync.Infrastructure.csproj" />
 
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="xunit" Version="2.9.3" />

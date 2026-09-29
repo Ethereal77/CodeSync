@@ -10,7 +10,7 @@ public interface IConflictStore
     /// </summary>
     /// <param name="path">The file path from which to load the conflicts report.</param>
     /// <returns>The set of conflicts, or null if no conflicts were found.</returns>
-    ConflictSet? Load(string path);
+    ConflictDocument? Load(string path);
 
     /// <summary>
     ///   Saves the conflicts report for a synchronization profile to a path.

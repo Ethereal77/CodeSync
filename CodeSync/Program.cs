@@ -92,7 +92,7 @@ internal static class Program
         var profile = new SyncProfile(sourceDir, destDir,
                                       result.DirectoryReferences, result.FileMappings);
 
-        ProfileStore.Save(profilePath, profile);
+        ProfileStore.SaveNew(profilePath, profile, sourceFiles, destFiles);
 
         // Save also the found conflicts to the conflict store
         var conflicts = new ConflictSet(sourceDir, destDir, result.Conflicts);
@@ -146,6 +146,7 @@ internal static class Program
         var conflicts = new ConflictSet(profile.SourceDirectory, profile.DestinationDirectory, result.Conflicts);
 
         ConflictStore.Save(ProfileArtifacts.GetConflictsPath(profilePath), conflicts);
+        ProfileStore.RefreshContent(profilePath, source, destination);
 
         Console.WriteLine(result.IsValid
             ? "Verificación correcta: no se han encontrado conflictos."
