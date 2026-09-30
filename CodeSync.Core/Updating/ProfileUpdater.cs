@@ -26,11 +26,11 @@ public sealed class ProfileUpdater
         ArgumentNullException.ThrowIfNull(currentSourceFiles);
 
         var currentByPath = currentSourceFiles
-            .ToDictionary(file => file.Path, StringComparer.Ordinal);
+            .ToDictionary(file => file.Path, PathUtils.PathComparer);
 
         var mappingsByPath = profile.FileMappings
             .Where(mapping => mapping.Source is not null)
-            .ToDictionary(mapping => mapping.Source!.Path, StringComparer.Ordinal);
+            .ToDictionary(mapping => mapping.Source!.Path, PathUtils.PathComparer);
 
         var updatedPaths = new List<string>();
         var errors = new List<string>();
@@ -40,7 +40,7 @@ public sealed class ProfileUpdater
         // with the current source files and profile mappings.
         var normalizedSkippedSourcePaths = skippedSourcePaths
             .Select(PathUtils.NormalizeFilePath)
-            .Distinct(StringComparer.Ordinal);
+            .Distinct(PathUtils.PathComparer);
 
         // Iterate over the normalized skipped source paths and attempt to update the corresponding mappings
         foreach (var path in normalizedSkippedSourcePaths)

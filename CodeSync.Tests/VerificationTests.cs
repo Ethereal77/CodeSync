@@ -95,11 +95,31 @@ public sealed class VerificationTests
                                       destinationPath: "lib/ignored.cs");
 
         var result = new ProfileVerifier().Verify(
-            profile: new SyncProfile("source", "destination", [], [ignored]),
+            profile: new SyncProfile("source", "destination", directoryReferences: [], fileMappings: [ignored]),
             sourceFiles: [source],
             destinationFiles: []);
 
         Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Verify_IgnoreDestinationUsesPlatformPathComparison()
+    {
+        var destination = CreateFakeFileSnapshot(path: "lib/file.cs", content: "destination");
+        var ignored = new FileMapping(source: null,
+                                      destination: null,
+                                      destinationPath: "LIB/FILE.cs",
+                                      isIgnored: true);
+
+        var result = new ProfileVerifier().Verify(
+            profile: new SyncProfile("source", "destination", directoryReferences: [], fileMappings: [ignored]),
+            sourceFiles: [],
+            destinationFiles: [destination]);
+
+        var isCaseInsensitive = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+        Assert.Equal(isCaseInsensitive, result.IsValid);
+        Assert.Equal(isCaseInsensitive, result.Conflicts.Count == 0);
     }
 
     [Fact]
@@ -111,7 +131,7 @@ public sealed class VerificationTests
                                       destinationPath: "lib/new.cs");
 
         var result = new ProfileVerifier().Verify(
-            profile: new SyncProfile("source", "destination", [], [mapping]),
+            profile: new SyncProfile("source", "destination", directoryReferences: [], fileMappings: [mapping]),
             sourceFiles: [source],
             destinationFiles: []);
 

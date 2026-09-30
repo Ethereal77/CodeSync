@@ -27,14 +27,14 @@ public sealed class ProfileVerifier
         ArgumentNullException.ThrowIfNull(destinationFiles);
 
         var source = sourceFiles.ToArray();
-        var sourceByPath = source.ToDictionary(file => file.Path, StringComparer.Ordinal);
+        var sourceByPath = source.ToDictionary(file => file.Path, PathUtils.PathComparer);
 
         var destination = destinationFiles.ToArray();
-        var destinationByPath = destination.ToDictionary(file => file.Path, StringComparer.Ordinal);
+        var destinationByPath = destination.ToDictionary(file => file.Path, PathUtils.PathComparer);
 
         var conflicts = new List<Conflict>();
-        var mappedSources = new HashSet<string>(StringComparer.Ordinal);
-        var mappedDestinations = new HashSet<string>(StringComparer.Ordinal);
+        var mappedSources = new HashSet<string>(PathUtils.PathComparer);
+        var mappedDestinations = new HashSet<string>(PathUtils.PathComparer);
 
         // Verify each file mapping in the profile against the source and destination files
         foreach (var mapping in profile.FileMappings)

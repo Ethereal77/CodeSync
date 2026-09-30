@@ -6,6 +6,23 @@ namespace CodeSync.Core;
 public static class PathUtils
 {
     /// <summary>
+    ///   Gets the platform-specific comparer for profile-relative paths.
+    /// </summary>
+    public static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+    /// <summary>
+    ///   Gets the platform-specific comparison mode for profile-relative paths.
+    /// </summary>
+    public static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+
+    /// <summary>
     ///   Normalizes a profile-relative file path, rejecting paths that can escape its profile root.
     /// </summary>
     /// <param name="path">The file path to normalize.</param>
@@ -91,8 +108,8 @@ public static class PathUtils
     public static bool IsPathUnder(string path, string directory)
     {
         return directory.Length == 0
-            || path == directory
-            || path.StartsWith(directory + "/", StringComparison.Ordinal);
+            || PathComparer.Equals(path, directory)
+            || path.StartsWith(directory + "/", PathComparison);
     }
 
     /// <summary>

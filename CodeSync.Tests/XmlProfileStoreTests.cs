@@ -47,6 +47,53 @@ public sealed class XmlProfileStoreTests
     }
 
     [Fact]
+    public void Load_ResolvesProfilePathsUsingPlatformComparison()
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+        var profilePath = Path.Combine(temporaryDirectory, "profile.xml");
+
+        try
+        {
+            var definition = new ProfileDefinition(
+                sourceDirectory: "source",
+                destinationDirectory: "destination",
+                directoryReferences: [],
+                fileMappings: [new ProfileMapping("src/Assets/file.cs", "LIB/file.cs")]);
+
+            var content = new ProfileContent(
+                sourceDirectory: "SOURCE",
+                destinationDirectory: "destination",
+                createdUtc: FixedTime,
+                lastUpdatedUtc: FixedTime,
+                sourceFiles: [new FileSnapshot("src/assets/file.cs", 1, FixedTime, Hash)],
+                destinationFiles: [new FileSnapshot("lib/file.cs", 1, FixedTime, Hash)]);
+
+            File.WriteAllText(profilePath,
+                              XmlCodecs.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
+
+            File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath),
+                              XmlCodecs.SerializeContent(content));
+
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
+            {
+                var mapping = Assert.Single(new XmlProfileStore().Load(profilePath).FileMappings);
+                Assert.Equal("src/assets/file.cs", mapping.Source!.Path);
+                Assert.Equal("lib/file.cs", mapping.Destination!.Path);
+            }
+            else
+            {
+                Assert.Throws<InvalidDataException>(() => new XmlProfileStore().Load(profilePath));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Load_AllowsIgnoredSourceMissingFromContentInventoryWhenDestinationExists()
     {
         var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));

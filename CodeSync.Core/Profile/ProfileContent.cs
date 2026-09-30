@@ -76,7 +76,7 @@ public sealed record ProfileContent
             if (materialized.Any(file => file is null))
                 throw new ArgumentException("A content inventory cannot contain a null snapshot.", parameterName);
 
-            if (materialized.Select(file => file.Path).Distinct(StringComparer.Ordinal).Count() != materialized.Length)
+            if (materialized.Select(file => file.Path).Distinct(PathUtils.PathComparer).Count() != materialized.Length)
                 throw new ArgumentException("A content inventory cannot contain duplicate paths.", parameterName);
 
             return materialized;
@@ -106,6 +106,6 @@ public sealed record ProfileContent
     {
         var normalizedPath = PathUtils.NormalizeFilePath(path);
 
-        return files.SingleOrDefault(file => file.Path == normalizedPath);
+        return files.SingleOrDefault(file => PathUtils.PathComparer.Equals(file.Path, normalizedPath));
     }
 }

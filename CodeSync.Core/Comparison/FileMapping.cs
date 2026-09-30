@@ -50,7 +50,7 @@ public sealed record FileMapping
             : PathUtils.NormalizeFilePath(destinationPath);
 
         if (destination is not null && normalizedDestinationPath is not null &&
-            !string.Equals(destination.Path, normalizedDestinationPath, StringComparison.Ordinal))
+            !PathUtils.PathComparer.Equals(destination.Path, normalizedDestinationPath))
         {
             throw new ArgumentException("The destination snapshot and path must identify the same file.", nameof(destinationPath));
         }

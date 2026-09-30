@@ -27,4 +27,14 @@ public sealed class PathUtilsTests
     {
         Assert.Equal(string.Empty, PathUtils.NormalizeDirectoryPath(string.Empty));
     }
+
+    [Fact]
+    public void IsPathUnder_UsesPlatformPathComparison()
+    {
+        var isCaseInsensitive = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+        Assert.Equal(isCaseInsensitive, PathUtils.PathComparer.Equals("Assets", "assets"));
+        Assert.Equal(isCaseInsensitive, PathUtils.IsPathUnder("SRC/file.cs", "src"));
+        Assert.False(PathUtils.IsPathUnder("src-old/file.cs", "src"));
+    }
 }

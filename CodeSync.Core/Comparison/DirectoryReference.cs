@@ -56,7 +56,7 @@ public sealed record DirectoryReference
 
         var destinationPaths = candidates
             .Select(reference => reference.DestinationPath)
-            .Distinct(StringComparer.Ordinal)
+            .Distinct(PathUtils.PathComparer)
             .ToArray();
 
         if (destinationPaths.Length != 1)

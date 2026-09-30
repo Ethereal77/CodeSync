@@ -75,6 +75,23 @@ public sealed class ComparisonTests
     }
 
     [Fact]
+    public void Compare_DerivesDirectoryReferenceUsingPlatformPathComparison()
+    {
+        var fakeSourceFile = CreateFakeSnapshot(path: "src/assets/one.cs", content: "same");
+        var fakeDestinationFile = CreateFakeSnapshot(path: "target/Assets/one.cs", content: "same");
+
+        var result = new FileComparer().Compare(
+            sourceFiles: [fakeSourceFile],
+            destinationFiles: [fakeDestinationFile]);
+
+        var hasCaseVariantReference = result.DirectoryReferences
+            .Any(reference => reference.SourcePath == "src"
+                           && reference.DestinationPath == "target");
+
+        Assert.Equal(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS(), hasCaseVariantReference);
+    }
+
+    [Fact]
     public void Compare_SuggestsDestinationForSourceConflictUnderKnownDirectory()
     {
         var result = new FileComparer().Compare(

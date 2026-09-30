@@ -38,10 +38,10 @@ public sealed class FileComparer
 
         var mappings = new List<FileMapping>();
         var conflicts = new List<Conflict>();
-        var matchedSourcePaths = new HashSet<string>(StringComparer.Ordinal);
-        var matchedDestPaths = new HashSet<string>(StringComparer.Ordinal);
-        var conflictedSourcePaths = new HashSet<string>(StringComparer.Ordinal);
-        var conflictedDestPaths = new HashSet<string>(StringComparer.Ordinal);
+        var matchedSourcePaths = new HashSet<string>(PathUtils.PathComparer);
+        var matchedDestPaths = new HashSet<string>(PathUtils.PathComparer);
+        var conflictedSourcePaths = new HashSet<string>(PathUtils.PathComparer);
+        var conflictedDestPaths = new HashSet<string>(PathUtils.PathComparer);
 
         foreach (var (identity, sourceGroup) in sourceGroups)
         {
@@ -156,7 +156,7 @@ public sealed class FileComparer
     private static IReadOnlyList<DirectoryReference> FindDirectoryReferences(
         IReadOnlyList<FileMapping> mappings)
     {
-        var matchedCounts = new Dictionary<(string Source, string Destination), int>();
+        var matchedCounts = new Dictionary<(string Source, string Destination), int>(DirectoryPairComparer.Instance);
 
         foreach (var mapping in mappings)
         {
@@ -178,12 +178,12 @@ public sealed class FileComparer
 
         // Filter out non-unique directory references by source and destination paths
         var uniqueBySource = candidates
-            .GroupBy(reference => reference.SourcePath, StringComparer.Ordinal)
+            .GroupBy(reference => reference.SourcePath, PathUtils.PathComparer)
             .Where(group => group.Count() == 1)
             .Select(group => group.Single());
 
         var uniqueByDestination = uniqueBySource
-            .GroupBy(reference => reference.DestinationPath, StringComparer.Ordinal)
+            .GroupBy(reference => reference.DestinationPath, PathUtils.PathComparer)
             .Where(group => group.Count() == 1)
             .Select(group => group.Single());
 
@@ -214,7 +214,7 @@ public sealed class FileComparer
 
                 for (var offset = 1; offset <= suffixLength; offset++)
                 {
-                    if (!string.Equals(sourceParts[^offset], destinationParts[^offset], StringComparison.Ordinal))
+                    if (!PathUtils.PathComparer.Equals(sourceParts[^offset], destinationParts[^offset]))
                     {
                         equal = false;
                         break;
@@ -231,4 +231,34 @@ public sealed class FileComparer
             }
         }
     }
+
+    #region Helper type: DirectoryPairComparer
+
+    /// <summary>
+    ///   Compares directory pairs for equality using platform-specific path comparison.
+    /// </summary>
+    private sealed class DirectoryPairComparer : IEqualityComparer<(string Source, string Destination)>
+    {
+        /// <summary>
+        ///   Gets the singleton instance of the <see cref="DirectoryPairComparer"/>.
+        /// </summary>
+        public static DirectoryPairComparer Instance { get; } = new();
+
+
+        /// <inheritdoc/>
+        public bool Equals((string Source, string Destination) x, (string Source, string Destination) y)
+        {
+            return PathUtils.PathComparer.Equals(x.Source, y.Source)
+                && PathUtils.PathComparer.Equals(x.Destination, y.Destination);
+        }
+
+        /// <inheritdoc/>
+        public int GetHashCode((string Source, string Destination) pair)
+        {
+            return HashCode.Combine(PathUtils.PathComparer.GetHashCode(pair.Source),
+                                    PathUtils.PathComparer.GetHashCode(pair.Destination));
+        }
+    }
+
+    #endregion
 }

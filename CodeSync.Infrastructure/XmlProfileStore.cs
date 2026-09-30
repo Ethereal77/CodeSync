@@ -147,7 +147,7 @@ public sealed class XmlProfileStore : IProfileStore
         static IReadOnlyList<FileSnapshot> MergeSnapshots(IEnumerable<FileSnapshot> existing,
                                                           IEnumerable<FileSnapshot> current)
         {
-            var snapshots = existing.ToDictionary(file => file.Path, StringComparer.Ordinal);
+            var snapshots = existing.ToDictionary(file => file.Path, PathUtils.PathComparer);
 
             foreach (var snapshot in current)
                 snapshots[snapshot.Path] = snapshot;
@@ -191,8 +191,8 @@ public sealed class XmlProfileStore : IProfileStore
     /// <param name="content">The profile content.</param>
     private static void ValidateRoots(ProfileDefinition profile, ProfileContent content)
     {
-        if (!string.Equals(profile.SourceDirectory, content.SourceDirectory, StringComparison.Ordinal) ||
-            !string.Equals(profile.DestinationDirectory, content.DestinationDirectory, StringComparison.Ordinal))
+        if (!PathUtils.PathComparer.Equals(profile.SourceDirectory, content.SourceDirectory) ||
+            !PathUtils.PathComparer.Equals(profile.DestinationDirectory, content.DestinationDirectory))
         {
             throw new InvalidDataException("The profile and content inventory use different directory roots.");
         }
@@ -213,8 +213,8 @@ public sealed class XmlProfileStore : IProfileStore
     {
         ValidateRoots(ProfileDefinition.FromProfile(profile), existing);
 
-        var sourceFiles = existing.SourceFiles.ToDictionary(file => file.Path, StringComparer.Ordinal);
-        var destinationFiles = existing.DestinationFiles.ToDictionary(file => file.Path, StringComparer.Ordinal);
+        var sourceFiles = existing.SourceFiles.ToDictionary(file => file.Path, PathUtils.PathComparer);
+        var destinationFiles = existing.DestinationFiles.ToDictionary(file => file.Path, PathUtils.PathComparer);
 
         foreach (var mapping in profile.FileMappings)
         {

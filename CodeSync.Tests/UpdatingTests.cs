@@ -11,8 +11,8 @@ public sealed class UpdatingTests
         var current = CreateFakeFileSnapshot(path: "src/file.cs", size: 2);
         var destination = CreateFakeFileSnapshot(path: "lib/file.cs", size: 1);
 
-        var fakeMapping = new FileMapping(previous, destination); 
-        var fakeProfile = CreateFakeProfile(fakeMapping); 
+        var fakeMapping = new FileMapping(previous, destination);
+        var fakeProfile = CreateFakeProfile(fakeMapping);
 
         var result = new ProfileUpdater().Update(
             fakeProfile,
@@ -41,6 +41,26 @@ public sealed class UpdatingTests
 
         Assert.True(result.Succeeded);
         Assert.Single(result.UpdatedSourcePaths);
+    }
+
+    [Fact]
+    public void Update_UsesPlatformPathComparison()
+    {
+        var previous = CreateFakeFileSnapshot(path: "src/File.cs", size: 1);
+        var current = CreateFakeFileSnapshot(path: "SRC/file.cs", size: 2);
+
+        var fileMapping = new FileMapping(previous, destination: null);
+        var fakeProfile = CreateFakeProfile(fileMapping);
+
+        var result = new ProfileUpdater().Update(
+            fakeProfile,
+            skippedSourcePaths: ["src/file.cs"],
+            currentSourceFiles: [current]);
+
+        var isCaseInsensitive = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+        Assert.Equal(isCaseInsensitive, result.Succeeded);
+        Assert.Equal(isCaseInsensitive, result.UpdatedSourcePaths.Count == 1);
     }
 
     [Fact]
