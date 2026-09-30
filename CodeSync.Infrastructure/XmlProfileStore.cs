@@ -320,7 +320,7 @@ public sealed class XmlProfileStore : IProfileStore
 
         var document = new ProfileDocument(profile, createdUtc, lastUpdatedUtc);
 
-        AtomicTextFile.Write(path, XmlCodecs.SerializeProfile(document));
-        AtomicTextFile.Write(ProfileArtifacts.GetContentPath(path), XmlCodecs.SerializeContent(content));
+        AtomicTextFile.Write(path, XmlCodecs.SerializeProfile(document), backupExisting: true);
+        AtomicTextFile.Write(ProfileArtifacts.GetContentPath(path), XmlCodecs.SerializeContent(content), backupExisting: true);
     }
 }

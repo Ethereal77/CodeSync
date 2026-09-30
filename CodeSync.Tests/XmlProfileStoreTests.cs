@@ -10,6 +10,65 @@ public sealed class XmlProfileStoreTests
 
 
     [Fact]
+    public void Save_WithExistingProfile_CreatesNumberedBackupsForProfileAndContent()
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+
+        var profilePath = Path.Combine(temporaryDirectory, "profile.xml");
+        var contentPath = ProfileArtifacts.GetContentPath(profilePath);
+
+        var profile = new SyncProfile("source", "destination", directoryReferences: [], fileMappings: []);
+        var store = new XmlProfileStore();
+
+        try
+        {
+            store.SaveNew(profilePath, profile, sourceFiles: [], destinationFiles: []);
+
+            for (var backupIndex = 0; backupIndex < 3; backupIndex++)
+            {
+                var previousProfile = File.ReadAllBytes(profilePath);
+                var previousContent = File.ReadAllBytes(contentPath);
+
+                store.Save(profilePath, profile);
+
+                var suffix = backupIndex == 0 ? ".bak" : $".{backupIndex - 1}.bak";
+                Assert.Equal(previousProfile, File.ReadAllBytes(profilePath + suffix));
+                Assert.Equal(previousContent, File.ReadAllBytes(contentPath + suffix));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SaveNew_WithNewProfile_DoesNotCreateBackups()
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+
+        var profilePath = Path.Combine(temporaryDirectory, "profile.xml");
+        var profile = new SyncProfile("source", "destination", directoryReferences: [], fileMappings: []);
+
+        try
+        {
+            new XmlProfileStore().SaveNew(profilePath, profile, sourceFiles: [], destinationFiles: []);
+
+            Assert.False(File.Exists(profilePath + ".bak"));
+            Assert.False(File.Exists(ProfileArtifacts.GetContentPath(profilePath) + ".bak"));
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
+
+    [Fact]
     public void Load_ReportsAllProfilePathsMissingFromContentInventory()
     {
         var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));

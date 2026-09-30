@@ -59,6 +59,11 @@ internal static class Program
 
             return ExitCodeError;
         }
+        catch (FileSaveException ex)
+        {
+            Console.Error.WriteLine($"Error: No se ha podido guardar el archivo {ex.Path}. ¿Es posible que esté en uso por otro proceso?");
+            return ExitCodeError;
+        }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error: {ex.Message}");
