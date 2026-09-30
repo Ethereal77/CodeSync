@@ -264,6 +264,9 @@ public static class XmlCodecs
             writer.WriteComment("""
                             The following files are either copied from a previous version of this CodeSync profile,
                             or new matching files found that will be copied.
+
+                            FileMapping entries describe files that will be copied.
+                            Ignore entries are reviewed decisions for files that must remain unpaired.
                           """,
                           indent: 4);
 
@@ -280,7 +283,9 @@ public static class XmlCodecs
                 if (!first)
                     writer.WriteBlankLine();
 
-                writer.WriteEmptyElement("FileMapping", attributes, indent: 4);
+                writer.WriteEmptyElement(mapping.IsIgnored ? "Ignore" : "FileMapping",
+                                         attributes,
+                                         indent: 4);
 
                 first = false;
             }
@@ -307,7 +312,8 @@ public static class XmlCodecs
             .Select(ParseDirectoryReference) ?? [];
 
         var fileMappings = root.Element("FileMappings")?
-            .Elements("FileMapping")
+            .Elements()
+            .Where(element => element.Name.LocalName is "FileMapping" or "Ignore")
             .Select(ParseProfileMapping) ?? [];
 
         var profile = new ProfileDefinition(sourceDirectory,
@@ -336,7 +342,8 @@ public static class XmlCodecs
         {
             return new ProfileMapping(
                 OptionalAttribute(element, "Source"),
-                OptionalAttribute(element, "Destination"));
+                OptionalAttribute(element, "Destination"),
+                element.Name.LocalName == "Ignore");
         }
     }
 

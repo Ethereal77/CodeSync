@@ -69,6 +69,12 @@ public sealed record ConflictEntry
     /// <summary>
     ///   Initializes a conflict entry with at least one path.
     /// </summary>
+    /// <param name="kind">The kind of conflict.</param>
+    /// <param name="sourcePath">The normalized source path, or <see langword="null"/> when absent.</param>
+    /// <param name="destinationPath">The normalized destination path, or <see langword="null"/> when absent.</param>
+    /// <exception cref="ArgumentException">
+    ///   Thrown if neither a source nor destination path is provided.
+    /// </exception>
     public ConflictEntry(ConflictKind kind, string? sourcePath, string? destinationPath)
     {
         if (sourcePath is null && destinationPath is null)
@@ -88,6 +94,6 @@ public sealed record ConflictEntry
 
         return new ConflictEntry(conflict.Kind,
                                  conflict.Mapping.Source?.Path,
-                                 conflict.Mapping.Destination?.Path);
+                                 conflict.Mapping.DestinationPath);
     }
 }

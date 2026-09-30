@@ -16,7 +16,7 @@ public sealed class XmlCodecTests
             destinationDirectory: @"C:\synthetic\destination",
             directoryReferences: [new DirectoryReference("src", "lib")],
             fileMappings: [new ProfileMapping("src/old.cs", "lib/new.cs"),
-                           new ProfileMapping("src/ignored.cs", null)]);
+                           new ProfileMapping("src/ignored.cs", null, isIgnored: true)]);
 
         var document = new ProfileDocument(definition,
                                            createdUtc: FixedTime,
@@ -32,6 +32,8 @@ public sealed class XmlCodecTests
         Assert.Equal("src", Assert.Single(restored.Profile.DirectoryReferences).SourcePath);
         Assert.Equal("src/old.cs", restored.Profile.FileMappings.First().SourcePath);
         Assert.Contains("Source=\"src/old.cs\"", serialized);
+        Assert.Contains("<Ignore Source=\"src/ignored.cs\"", serialized);
+        Assert.DoesNotContain("<Ignore Source=\"src/ignored.cs\" Destination=", serialized);
         Assert.DoesNotContain("Size=", serialized);
         Assert.DoesNotContain("Sha256=", serialized);
         Assert.Contains("CodeSync Profile v1", serialized);

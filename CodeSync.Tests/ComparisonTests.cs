@@ -74,6 +74,54 @@ public sealed class ComparisonTests
                       && reference.DestinationPath == "lib");
     }
 
+    [Fact]
+    public void Compare_SuggestsDestinationForSourceConflictUnderKnownDirectory()
+    {
+        var result = new FileComparer().Compare(
+            sourceFiles:
+            [
+                CreateFakeSnapshot(path: "src/known.cs", content: "known"),
+                CreateFakeSnapshot(path: "src/new.cs", content: "new")
+            ],
+            destinationFiles:
+            [
+                CreateFakeSnapshot(path: "lib/known.cs", content: "known")
+            ]);
+
+        var conflict = Assert.Single(result.Conflicts,
+                                     conflict => conflict.Kind == ConflictKind.SourceWithoutDestination);
+
+        Assert.Equal("lib/new.cs", conflict.Mapping.DestinationPath);
+    }
+
+    [Fact]
+    public void DirectoryReference_UsesMostSpecificUniqueSourceDirectory()
+    {
+        var destination = DirectoryReference.TryMapSourcePath(
+            sourcePath: "src/nested/new.cs",
+            references:
+            [
+                new DirectoryReference("src", "lib"),
+                new DirectoryReference("src/nested", "deep")
+            ]);
+
+        Assert.Equal("deep/new.cs", destination);
+    }
+
+    [Fact]
+    public void DirectoryReference_RejectsConflictingReferencesAtSameDepth()
+    {
+        var destination = DirectoryReference.TryMapSourcePath(
+            sourcePath: "src/new.cs",
+            references:
+            [
+                new DirectoryReference("src", "lib"),
+                new DirectoryReference("src", "other")
+            ]);
+
+        Assert.Null(destination);
+    }
+
 
     private static FileSnapshot CreateFakeSnapshot(string path, string content)
     {

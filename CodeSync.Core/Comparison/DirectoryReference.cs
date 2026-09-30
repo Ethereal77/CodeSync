@@ -33,4 +33,40 @@ public sealed record DirectoryReference
         SourcePath = PathUtils.NormalizeDirectoryPath(sourcePath);
         DestinationPath = PathUtils.NormalizeDirectoryPath(destinationPath);
     }
+
+    /// <summary>
+    ///   Tries to map a source file path through the most specific applicable directory reference.
+    /// </summary>
+    /// <param name="sourcePath">The normalized source file path.</param>
+    /// <param name="references">The directory references to inspect.</param>
+    /// <returns>The mapped destination path, or <see langword="null"/> when no unique mapping applies.</returns>
+    public static string? TryMapSourcePath(string sourcePath, IEnumerable<DirectoryReference> references)
+    {
+        var normalizedSourcePath = PathUtils.NormalizeFilePath(sourcePath);
+        ArgumentNullException.ThrowIfNull(references);
+
+        var candidates = references
+            .Where(reference => PathUtils.IsPathUnder(normalizedSourcePath, reference.SourcePath))
+            .GroupBy(reference => PathUtils.GetPathDepth(reference.SourcePath))
+            .OrderByDescending(group => group.Key)
+            .FirstOrDefault();
+
+        if (candidates is null)
+            return null;
+
+        var destinationPaths = candidates
+            .Select(reference => reference.DestinationPath)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (destinationPaths.Length != 1)
+            return null;
+
+        var reference = candidates.First();
+        var suffix = PathUtils.GetRelativeSuffix(normalizedSourcePath, reference.SourcePath);
+
+        return reference.DestinationPath.Length == 0
+            ? suffix
+            : $"{reference.DestinationPath}/{suffix}";
+    }
 }

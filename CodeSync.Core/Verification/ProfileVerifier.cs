@@ -43,30 +43,56 @@ public sealed class ProfileVerifier
             {
                 // Check for duplicate source mappings in the profile
                 if (!mappedSources.Add(mapping.Source.Path))
+                {
                     conflicts.Add(new Conflict(ConflictKind.DuplicateMapping, mapping));
+                }
                 // Check for missing source files in the profile
-                else if (!sourceByPath.ContainsKey(mapping.Source.Path))
+                else if (!mapping.IsIgnored && !sourceByPath.ContainsKey(mapping.Source.Path))
+                {
                     conflicts.Add(new Conflict(ConflictKind.MissingMappedFile, mapping));
+                }
             }
 
-            if (mapping.Destination is not null)
+            if (mapping.DestinationPath is not null)
             {
                 // Check for duplicate destination mappings in the profile
-                if (!mappedDestinations.Add(mapping.Destination.Path))
+                if (!mappedDestinations.Add(mapping.DestinationPath))
+                {
                     conflicts.Add(new Conflict(ConflictKind.DuplicateMapping, mapping));
+                }
                 // Check for missing destination files in the profile
-                else if (!destinationByPath.ContainsKey(mapping.Destination.Path))
+                else if (!mapping.IsIgnored &&
+                         mapping.Destination is not null &&
+                         !destinationByPath.ContainsKey(mapping.DestinationPath))
+                {
                     conflicts.Add(new Conflict(ConflictKind.MissingMappedFile, mapping));
+                }
             }
         }
 
         // Check for source files without corresponding destination mappings
         foreach (var sourceFile in source.Where(file => !mappedSources.Contains(file.Path)))
-            conflicts.Add(new Conflict(ConflictKind.SourceWithoutDestination, new FileMapping(sourceFile, null)));
+        {
+            var suggestedDestination = DirectoryReference.TryMapSourcePath(sourceFile.Path,
+                                                                           profile.DirectoryReferences);
+            var fileMapping = new FileMapping(sourceFile,
+                                              destination: null,
+                                              destinationPath: suggestedDestination);
+
+            var conflict = new Conflict(ConflictKind.SourceWithoutDestination, fileMapping);
+
+            conflicts.Add(conflict);
+        }
 
         // Check for destination files without corresponding source mappings
         foreach (var destFile in destination.Where(file => !mappedDestinations.Contains(file.Path)))
-            conflicts.Add(new Conflict(ConflictKind.DestinationWithoutSource, new FileMapping(null, destFile)));
+        {
+            var fileMapping = new FileMapping(source: null, destFile);
+
+            var conflict = new Conflict(ConflictKind.DestinationWithoutSource, fileMapping);
+
+            conflicts.Add(conflict);
+        }
 
         return new VerificationResult(conflicts);
     }

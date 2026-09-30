@@ -109,9 +109,32 @@ public sealed class FileComparer
         }
 
         // Compose a list of possible directory concordances based on the file mappings
-        var dirReferences = FindDirectoryReferences(mappings, source, destination);
+        var dirReferences = FindDirectoryReferences(mappings);
 
-        return new ComparisonResult(mappings, dirReferences, conflicts);
+        var conflictsWithSuggestions = conflicts
+            .Select(conflict =>
+            {
+                if (conflict.Kind != ConflictKind.SourceWithoutDestination ||
+                    conflict.Mapping.Source is null ||
+                    conflict.Mapping.DestinationPath is not null)
+                {
+                    return conflict;
+                }
+
+                var suggestedDestination = DirectoryReference.TryMapSourcePath(
+                    conflict.Mapping.Source.Path,
+                    dirReferences);
+
+                return suggestedDestination is null
+                    ? conflict
+                    : new Conflict(conflict.Kind,
+                                   new FileMapping(conflict.Mapping.Source,
+                                                   destination: null,
+                                                   destinationPath: suggestedDestination));
+            })
+            .ToArray();
+
+        return new ComparisonResult(mappings, dirReferences, conflictsWithSuggestions);
 
         //
         // Gets a unique identifier for the specified file snapshot based on its size and SHA-256 hash.
@@ -131,13 +154,8 @@ public sealed class FileComparer
     ///   based on the provided file mappings. It helps in understanding the directory structure relationships.
     /// </remarks>
     private static IReadOnlyList<DirectoryReference> FindDirectoryReferences(
-        IReadOnlyList<FileMapping> mappings,
-        IReadOnlyList<FileSnapshot> source,
-        IReadOnlyList<FileSnapshot> destination)
+        IReadOnlyList<FileMapping> mappings)
     {
-        var sourceCounts = CountFilesByDirectory(source);
-        var destinationCounts = CountFilesByDirectory(destination);
-
         var matchedCounts = new Dictionary<(string Source, string Destination), int>();
 
         foreach (var mapping in mappings)
@@ -152,14 +170,9 @@ public sealed class FileComparer
             }
         }
 
-        // Select candidate directory references based on matched counts and file counts, i.e.,
-        // those directory pairs where the number of matched files equals the total number
-        // of files in both source and destination directories.
+        // Select candidate directory references from matched files. A reference is useful for
+        // unresolved files as well, so incomplete trees must not discard an otherwise consistent pair.
         var candidates = matchedCounts
-            .Where(pair => sourceCounts.TryGetValue(pair.Key.Source, out var sourceCount)
-                        && destinationCounts.TryGetValue(pair.Key.Destination, out var destinationCount)
-                        && sourceCount == destinationCount
-                        && pair.Value == sourceCount)
             .Select(pair => new DirectoryReference(pair.Key.Source, pair.Key.Destination))
             .ToList();
 
@@ -182,23 +195,6 @@ public sealed class FileComparer
             .OrderBy(reference => reference.SourcePath, StringComparer.Ordinal)
             .ThenBy(reference => reference.DestinationPath, StringComparer.Ordinal)
             .ToArray();
-
-        //
-        // Counts the number of files in each directory, including ancestor directories.
-        //
-        static Dictionary<string, int> CountFilesByDirectory(IEnumerable<FileSnapshot> files)
-        {
-            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-
-            foreach (var file in files)
-            foreach (var directory in PathUtils.EnumerateAncestors(file.Path))
-            {
-                ref var countRef = ref CollectionsMarshal.GetValueRefOrAddDefault(counts, directory, out _);
-                countRef++;
-            }
-
-            return counts;
-        }
 
         //
         // Enumerates pairs of matching ancestor directories for the given source and destination paths.

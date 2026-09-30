@@ -42,9 +42,19 @@ public sealed class XmlProfileStore : IProfileStore
         //
         FileMapping CreateFileMapping(ProfileMapping mapping)
         {
+            var source = mapping.SourcePath is null
+                ? null
+                : ResolveSource(content, mapping.SourcePath);
+
+            var destination = mapping.DestinationPath is null
+                ? null
+                : content.FindDestination(mapping.DestinationPath);
+
             return new FileMapping(
-                mapping.SourcePath is null ? null : ResolveSource(content, mapping.SourcePath),
-                mapping.DestinationPath is null ? null : ResolveDestination(content, mapping.DestinationPath));
+                source,
+                destination,
+                mapping.DestinationPath,
+                mapping.IsIgnored);
         }
 
         //
@@ -55,16 +65,6 @@ public sealed class XmlProfileStore : IProfileStore
         {
             return content.FindSource(path)
                 ?? throw new InvalidDataException($"The source path '{path}' is missing from the content inventory.");
-        }
-
-        //
-        // Resolves a destination file snapshot from the content inventory.
-        // Throws an exception if the file is not found.
-        //
-        static FileSnapshot ResolveDestination(ProfileContent content, string path)
-        {
-            return content.FindDestination(path)
-                ?? throw new InvalidDataException($"The destination path '{path}' is missing from the content inventory.");
         }
     }
 

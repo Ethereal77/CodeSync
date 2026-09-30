@@ -61,7 +61,10 @@ public sealed class ProfileUpdater
 
             // Update the mapping with the current source file snapshot and record the updated path
             var index = Array.IndexOf(updatedMappings, mapping);
-            updatedMappings[index] = new FileMapping(current, mapping.Destination);
+            updatedMappings[index] = new FileMapping(current,
+                                                     mapping.Destination,
+                                                     mapping.DestinationPath,
+                                                     mapping.IsIgnored);
             updatedPaths.Add(path);
         }
 

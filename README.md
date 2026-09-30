@@ -144,7 +144,8 @@ with the current source size, UTC last-write time, and SHA-256 hash:
 
 - A changed source is copied and its snapshots in the content database are refreshed.
 - An unchanged source is skipped and recorded in `<profile>.skipped.xml`.
-- A source-only mapping (no destination) is treated as intentionally ignored.
+- An explicit `<Ignore>` mapping is reported as ignored and is never copied.
+- A mapping with a destination path but no destination snapshot is copied as a new destination file.
 
 Use `--dry-run` to see the operations that would be performed without writing destination files,
 updating the profile, or producing a skipped-file report.
@@ -178,15 +179,20 @@ report and decide how the files should relate. The current workflow supports man
 
 2. A mapping with both `Source` and `Destination` means “copy this source file to this destination file.”
 
-3. A mapping containing only `Source` or only `Destination` marks that file as intentionally unpaired;
-   source-only mappings are ignored by `copy`.
+3. To explicitly ignore a conflict, add an `<Ignore>` entry inside `<FileMappings>`. It may contain
+  `Source`, `Destination`, or both paths. This makes the decision visible in the profile and does not
+  require the ignored destination to exist.
 
-4. Clear the resolved entries from the conflict report, then run `verify` again.
+4. A source-only conflict may contain a suggested `Destination` inferred from the most specific
+  `DirectoryReference`. Review or correct that path. To copy the file, change the entry to
+  `<FileMapping Source="..." Destination="..." />`; the destination file may be created by `copy`.
+
+5. Clear the resolved entries from the conflict report, then run `verify` again.
    `copy` is enabled only when the report is empty and verification succeeds.
 
 Profiles store absolute root directories and normalized relative file paths. File metadata is kept
-separately in `<profile>.content.xml`; a manually edited mapping must refer to paths already present
-in that inventory. Unknown paths are rejected because CodeSync cannot verify or copy them safely.
+separately in `<profile>.content.xml`. Source paths must be present in that inventory; a destination
+path may be new and will receive its first snapshot after a successful copy.
 
 A typical generated profile has this shape:
 
@@ -208,7 +214,7 @@ A typical generated profile has this shape:
   </DirectoryReferences>
   <FileMappings>
     <FileMapping Source="src/Widget.cs" Destination="lib/Widget.cs" />
-    <FileMapping Source="src/IntentionallyIgnored.cs" />
+    <Ignore Source="src/IntentionallyIgnored.cs" />
   </FileMappings>
 </CodeSyncProfile>
 ```

@@ -64,6 +64,60 @@ public sealed class VerificationTests
         Assert.Contains(result.Conflicts, conflict => conflict.Kind == ConflictKind.DuplicateMapping);
     }
 
+    [Fact]
+    public void Verify_SuggestsDestinationFromTheMostSpecificDirectoryReference()
+    {
+        var knownSource = CreateFakeFileSnapshot(path: "src/known.cs", content: "known");
+        var knownDestination = CreateFakeFileSnapshot(path: "lib/known.cs", content: "known");
+        var newSource = CreateFakeFileSnapshot(path: "src/new.cs", content: "new");
+
+        var profile = new SyncProfile(
+            sourceDirectory: "source",
+            destinationDirectory: "destination",
+            directoryReferences: [new DirectoryReference("src", "lib")],
+            fileMappings: [new FileMapping(knownSource, knownDestination)]);
+
+        var result = new ProfileVerifier().Verify(profile: profile,
+                                                  sourceFiles: [knownSource, newSource],
+                                                  destinationFiles: [knownDestination]);
+
+        var conflict = Assert.Single(result.Conflicts);
+        Assert.Equal("lib/new.cs", conflict.Mapping.DestinationPath);
+    }
+
+    [Fact]
+    public void Verify_IgnoreCoversSourceWithSuggestedDestinationThatIsNotPresent()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/ignored.cs", content: "ignored");
+        var ignored = new FileMapping(source,
+                                      destination: null,
+                                      isIgnored: true,
+                                      destinationPath: "lib/ignored.cs");
+
+        var result = new ProfileVerifier().Verify(
+            profile: new SyncProfile("source", "destination", [], [ignored]),
+            sourceFiles: [source],
+            destinationFiles: []);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Verify_AcceptsNewDestinationPathWithoutDestinationSnapshot()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/new.cs", content: "new");
+        var mapping = new FileMapping(source,
+                                      destination: null,
+                                      destinationPath: "lib/new.cs");
+
+        var result = new ProfileVerifier().Verify(
+            profile: new SyncProfile("source", "destination", [], [mapping]),
+            sourceFiles: [source],
+            destinationFiles: []);
+
+        Assert.True(result.IsValid);
+    }
+
 
     private static SyncProfile CreateFakeProfile(params FileMapping[] mappings)
     {

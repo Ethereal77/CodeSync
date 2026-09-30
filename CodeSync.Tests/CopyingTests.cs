@@ -55,12 +55,71 @@ public sealed class CopyingTests
 
         var workspace = new MemoryWorkspace((source, "ignored"));
 
-        var fakeMapping = new FileMapping(source, destination: null);
+        var fakeMapping = new FileMapping(source, destination: null, isIgnored: true);
         var fakeProfile = CreateFakeProfile(fakeMapping);
 
         var result = new FileCopier().Copy(fakeProfile, workspace);
 
         Assert.Equal(CopyFileStatus.Ignored, Assert.Single(result.Files).Status);
+    }
+
+    [Fact]
+    public void Copy_IgnoresMappingWithSuggestedDestinationWithoutReadingIt()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/ignored.cs", content: "ignored");
+        var workspace = new MemoryWorkspace((source, "ignored"));
+        var mapping = new FileMapping(source,
+                                      destination: null,
+                                      isIgnored: true,
+                                      destinationPath: "lib/ignored.cs");
+
+        var result = new FileCopier().Copy(CreateFakeProfile(mapping), workspace);
+
+        var file = Assert.Single(result.Files);
+        Assert.Equal(CopyFileStatus.Ignored, file.Status);
+        Assert.Equal("lib/ignored.cs", file.DestinationPath);
+        Assert.Empty(workspace.Writes);
+    }
+
+    [Fact]
+    public void Copy_CreatesDestinationWhenMappingHasNoDestinationSnapshot()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/new.cs", content: "new");
+        var destination = CreateFakeFileSnapshot(path: "lib/new.cs", content: "old");
+        var workspace = new MemoryWorkspace((source, "new"), (destination, "old"));
+        var mapping = new FileMapping(source,
+                                      destination: null,
+                                      destinationPath: "lib/new.cs");
+
+        var result = new FileCopier().Copy(CreateFakeProfile(mapping), workspace);
+
+        Assert.Equal(CopyFileStatus.Copied, Assert.Single(result.Files).Status);
+        Assert.Single(workspace.Writes);
+        Assert.Equal("lib/new.cs", workspace.Writes[0].Path);
+    }
+
+    [Fact]
+    public void Copy_RejectsNonIgnoredMappingWithoutSource()
+    {
+        var destination = CreateFakeFileSnapshot(path: "lib/file.cs", content: "destination");
+        var profile = CreateFakeProfile(new FileMapping(source: null, destination));
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => new FileCopier().Copy(profile, new MemoryWorkspace((destination, "destination"))));
+
+        Assert.Contains("source", exception.Message);
+    }
+
+    [Fact]
+    public void Copy_RejectsNonIgnoredMappingWithoutDestinationPath()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/file.cs", content: "source");
+        var profile = CreateFakeProfile(new FileMapping(source, destination: null));
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => new FileCopier().Copy(profile, new MemoryWorkspace((source, "source"))));
+
+        Assert.Contains("destination path", exception.Message);
     }
 
     [Fact]
