@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace CodeSync.Core;
@@ -46,7 +47,7 @@ public static class XmlCodecs
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(xml);
 
-        var root = XDocument.Parse(xml, LoadOptions.PreserveWhitespace).Root
+        var root = XDocument.Parse(xml, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo).Root
             ?? throw new InvalidDataException("The XML document has no root element.");
 
         if (root.Name.LocalName != expectedRoot ||
@@ -107,6 +108,117 @@ public static class XmlCodecs
         var value = (string?) element.Attribute(name);
 
         return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    /// <summary>
+    ///   Attempts to retrieve the required text content of an XML element,
+    ///   adding any errors to the provided list.
+    /// </summary>
+    /// <param name="root">The XML element containing the required text.</param>
+    /// <param name="name">The name of the child element whose text content is required.</param>
+    /// <param name="errors">The list of errors to which any encountered errors will be added.</param>
+    /// <returns>The text content of the specified child element, or <c>null</c> if an error occurred.</returns>
+    private static string? TryRequiredText(XElement root, string name, List<string> errors)
+    {
+        try
+        {
+            return RequiredText(root, name);
+        }
+        catch (InvalidDataException exception)
+        {
+            errors.Add(FormatElementError(root.Element(name) ?? root, exception.Message));
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///   Attempts to retrieve the required UTC timestamp from an XML element,
+    ///   adding any errors to the provided list.
+    /// </summary>
+    /// <param name="root">The XML element containing the required timestamp.</param>
+    /// <param name="name">The name of the child element whose timestamp is required.</param>
+    /// <param name="errors">The list of errors to which any encountered errors will be added.</param>
+    /// <returns>The UTC timestamp of the specified child element, or <c>null</c> if an error occurred.</returns>
+    private static DateTimeOffset? TryRequiredUtc(XElement root, string name, List<string> errors)
+    {
+        try
+        {
+            return RequiredUtc(root, name);
+        }
+        catch (InvalidDataException exception)
+        {
+            errors.Add(FormatElementError(root.Element(name) ?? root, exception.Message));
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///   Attempts to retrieve the required root directory path from an XML element,
+    ///   adding any errors to the provided list.
+    /// </summary>
+    /// <param name="root">The XML element containing the required root directory path.</param>
+    /// <param name="name">The name of the child element whose root directory path is required.</param>
+    /// <param name="errors">The list of errors to which any encountered errors will be added.</param>
+    /// <returns>The full path of the specified child element, or <c>null</c> if an error occurred.</returns>
+    private static string? TryRequiredRoot(XElement root, string name, List<string> errors)
+    {
+        var path = TryRequiredText(root, name, errors);
+        if (path is null)
+            return null;
+
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            var message = FormatElementError(
+                root.Element(name) ?? root,
+                $"The XML element '{name}' is not a valid directory path: {exception.Message}");
+
+            errors.Add(message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///   Attempts to parse an XML element using the provided parsing function,
+    ///   adding any errors to the provided list.
+    /// </summary>
+    /// <typeparam name="T">The type of the parsed result.</typeparam>
+    /// <param name="element">The XML element to parse.</param>
+    /// <param name="errors">The list of errors to which any encountered errors will be added.</param>
+    /// <param name="parse">The function that performs the parsing.</param>
+    /// <returns>The parsed result, or <c>null</c> if an error occurred.</returns>
+    private static T? TryParseElement<T>(XElement element, List<string> errors, Func<T> parse)
+        where T : class
+    {
+        try
+        {
+            return parse();
+        }
+        catch (Exception exception) when (exception is InvalidDataException or ArgumentException or FormatException or OverflowException)
+        {
+            var message = FormatElementError(element, exception.Message);
+
+            errors.Add(message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///   Formats an error message for an XML element, including line information if available.
+    /// </summary>
+    /// <param name="element">The XML element associated with the error.</param>
+    /// <param name="message">The error message.</param>
+    /// <returns>The formatted error message, including line information if available.</returns>
+    private static string FormatElementError(XElement element, string message)
+    {
+        var lineInfo = (IXmlLineInfo) element;
+
+        return lineInfo.HasLineInfo()
+            ? $"Line {lineInfo.LineNumber}: {message}"
+            : message;
     }
 
     /// <summary>
@@ -302,28 +414,44 @@ public static class XmlCodecs
     /// <returns>The parsed profile definition and timestamps.</returns>
     public static ProfileDocument DeserializeProfile(string xml)
     {
+        var errors = new List<string>();
+
         var root = LoadRootFromXmlDocumentString(xml, ProfileRoot);
 
-        var sourceDirectory = RequiredText(root, "SourceDirectory");
-        var destinationDirectory = RequiredText(root, "DestinationDirectory");
+        var sourceDirectory = TryRequiredRoot(root, "SourceDirectory", errors);
+        var destinationDirectory = TryRequiredRoot(root, "DestinationDirectory", errors);
 
         var directoryReferences = root.Element("DirectoryReferences")?
             .Elements("Directory")
-            .Select(ParseDirectoryReference) ?? [];
+            .Select(element => TryParseElement(element,
+                                               errors,
+                                               () => ParseDirectoryReference(element)))
+            .OfType<DirectoryReference>()
+            .ToArray() ?? [];
 
         var fileMappings = root.Element("FileMappings")?
             .Elements()
             .Where(element => element.Name.LocalName is "FileMapping" or "Ignore")
-            .Select(ParseProfileMapping) ?? [];
+            .Select(element => TryParseElement(element,
+                                               errors,
+                                               () => ParseProfileMapping(element)))
+            .OfType<ProfileMapping>()
+            .ToArray() ?? [];
 
-        var profile = new ProfileDefinition(sourceDirectory,
-                                             destinationDirectory,
-                                             directoryReferences,
-                                             fileMappings);
+        var createdUtc = TryRequiredUtc(root, "CreatedUtc", errors);
+        var lastUpdatedUtc = TryRequiredUtc(root, "LastUpdatedUtc", errors);
+
+        if (errors.Count > 0)
+            throw new ProfileLoadException(errors);
+
+        var profile = new ProfileDefinition(sourceDirectory!,
+                                            destinationDirectory!,
+                                            directoryReferences,
+                                            fileMappings);
 
         return new ProfileDocument(profile,
-                                   RequiredUtc(root, "CreatedUtc"),
-                                   RequiredUtc(root, "LastUpdatedUtc"));
+                                   createdUtc!.Value,
+                                   lastUpdatedUtc!.Value);
 
         //
         // Parses an individual directory reference from its XML representation.
@@ -442,23 +570,56 @@ public static class XmlCodecs
     /// <returns>The parsed content inventory.</returns>
     public static ProfileContent DeserializeContent(string xml)
     {
+        var errors = new List<string>();
+
         var root = LoadRootFromXmlDocumentString(xml, ContentRoot);
 
-        var sourceFiles = root.Element("SourceFiles")?
-            .Elements("File")
-            .Select(ParseSnapshot) ?? [];
+        var sourceDirectory = TryRequiredRoot(root, "SourceDirectory", errors);
+        var destinationDirectory = TryRequiredRoot(root, "DestinationDirectory", errors);
+        var createdUtc = TryRequiredUtc(root, "CreatedUtc", errors);
+        var lastUpdatedUtc = TryRequiredUtc(root, "LastUpdatedUtc", errors);
 
-        var destinationFiles = root.Element("DestinationFiles")?
-            .Elements("File")
-            .Select(ParseSnapshot) ?? [];
+        var sourceFiles = ParseSnapshots(root, "SourceFiles", errors);
+        var destinationFiles = ParseSnapshots(root, "DestinationFiles", errors);
 
-        return new ProfileContent(
-            RequiredText(root, "SourceDirectory"),
-            RequiredText(root, "DestinationDirectory"),
-            RequiredUtc(root, "CreatedUtc"),
-            RequiredUtc(root, "LastUpdatedUtc"),
-            sourceFiles,
-            destinationFiles);
+        if (errors.Count > 0)
+            throw new ProfileLoadException(errors);
+
+        return new ProfileContent(sourceDirectory!,
+                                  destinationDirectory!,
+                                  createdUtc!.Value,
+                                  lastUpdatedUtc!.Value,
+                                  sourceFiles,
+                                  destinationFiles);
+
+        //
+        // Parses a collection of file snapshots from the specified XML section.
+        //
+        static IReadOnlyList<FileSnapshot> ParseSnapshots(XElement root, string sectionName, List<string> errors)
+        {
+            var snapshots = new List<FileSnapshot>();
+            var paths = new HashSet<string>(PathUtils.PathComparer);
+
+            foreach (var element in root.Element(sectionName)?.Elements("File") ?? [])
+            {
+                var snapshot = TryParseElement(element, errors, () => ParseSnapshot(element));
+                if (snapshot is null)
+                    continue;
+
+                if (!paths.Add(snapshot.Path))
+                {
+                    var message = FormatElementError(
+                        element,
+                        $"The {sectionName} section contains duplicate path '{snapshot.Path}'.");
+
+                    errors.Add(message);
+                }
+
+                snapshots.Add(snapshot);
+            }
+
+            return snapshots;
+        }
 
         //
         // Parses an individual file snapshot from its XML representation.
@@ -638,27 +799,39 @@ public static class XmlCodecs
     /// <returns>The parsed conflict document.</returns>
     public static ConflictDocument DeserializeConflicts(string xml)
     {
+        var errors = new List<string>();
+
         var root = LoadRootFromXmlDocumentString(xml, ConflictsRoot);
 
-        var conflicts = ConflictDisplayOrder
-            .SelectMany(kind => ParseConflictSection(root, kind))
-            .ToArray();
+        var sourceDirectory = TryRequiredRoot(root, "SourceDirectory", errors);
+        var destinationDirectory = TryRequiredRoot(root, "DestinationDirectory", errors);
 
-        return new ConflictDocument(RequiredText(root, "SourceDirectory"),
-                                    RequiredText(root, "DestinationDirectory"),
-                                    conflicts);
+        var conflicts = new List<ConflictEntry>();
 
-        //
-        // Parses the conflict section of the XML document for a specific conflict kind.
-        //
-        static IEnumerable<ConflictEntry> ParseConflictSection(XElement root, ConflictKind kind)
+        foreach (var kind in ConflictDisplayOrder)
         {
-            return root.Element(kind.ToString())?.Elements("FileMapping")
-                .Select(element => new ConflictEntry(
-                    kind,
-                    OptionalAttribute(element, "Source"),
-                    OptionalAttribute(element, "Destination"))) ?? [];
+            var mappingsOfKind = root.Element(kind.ToString())?.Elements("FileMapping") ?? [];
+
+            foreach (var element in mappingsOfKind)
+            {
+                var conflict = TryParseElement(
+                    element,
+                    errors,
+                    () => new ConflictEntry(kind,
+                                            OptionalAttribute(element, "Source"),
+                                            OptionalAttribute(element, "Destination")));
+
+                if (conflict is not null)
+                    conflicts.Add(conflict);
+            }
         }
+
+        if (errors.Count > 0)
+            throw new ProfileLoadException(errors);
+
+        return new ConflictDocument(sourceDirectory!,
+                                    destinationDirectory!,
+                                    conflicts);
     }
 
     #endregion
@@ -717,14 +890,27 @@ public static class XmlCodecs
     /// <returns>The normalized skipped source paths.</returns>
     public static IReadOnlyList<string> DeserializeSkipped(string xml)
     {
+        var errors = new List<string>();
+        var sourcePaths = new List<string>();
+
         var root = LoadRootFromXmlDocumentString(xml, SkippedRoot);
 
         var skippedFilesXml = root.Element("Files");
 
-        return skippedFilesXml?.Elements("File")
-            .Select(element => RequiredAttribute(element, "Source"))
-            .Select(PathUtils.NormalizeFilePath)
-            .ToArray() ?? [];
+        foreach (var element in skippedFilesXml?.Elements("File") ?? [])
+        {
+            var sourcePath = TryParseElement(element,
+                                             errors,
+                                             () => PathUtils.NormalizeFilePath(RequiredAttribute(element, "Source")));
+
+            if (sourcePath is not null)
+                sourcePaths.Add(sourcePath);
+        }
+
+        if (errors.Count > 0)
+            throw new ProfileLoadException(errors);
+
+        return sourcePaths;
     }
 
     #endregion

@@ -10,7 +10,7 @@ public sealed class XmlProfileStoreTests
 
 
     [Fact]
-    public void Load_RejectsProfilePathMissingFromContentInventory()
+    public void Load_ReportsAllProfilePathsMissingFromContentInventory()
     {
         var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temporaryDirectory);
@@ -19,25 +19,87 @@ public sealed class XmlProfileStoreTests
         try
         {
             var definition = new ProfileDefinition(
-                "source",
-                "destination",
-                [],
-                [new ProfileMapping("src/unknown.cs", "lib/known.cs")]);
+                sourceDirectory: "source",
+                destinationDirectory: "destination",
+                directoryReferences: [],
+                fileMappings:
+                [
+                    new ProfileMapping("src/unknown.cs", "lib/known.cs"),
+                    new ProfileMapping("src/also-unknown.cs", "lib/also-known.cs")
+                ]);
+
             var content = new ProfileContent(
-                "source",
-                "destination",
-                FixedTime,
-                FixedTime,
-                [new FileSnapshot("src/known.cs", 1, FixedTime, Hash)],
-                [new FileSnapshot("lib/known.cs", 1, FixedTime, Hash)]);
+                sourceDirectory: "source",
+                destinationDirectory: "destination",
+                createdUtc: FixedTime,
+                lastUpdatedUtc: FixedTime,
+                sourceFiles: [new FileSnapshot("src/known.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash)],
+                destinationFiles:
+                [
+                    new FileSnapshot("lib/known.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash),
+                    new FileSnapshot("lib/also-known.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash)
+                ]);
 
             File.WriteAllText(profilePath,
                               XmlCodecs.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
             File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath),
                               XmlCodecs.SerializeContent(content));
 
-            var exception = Assert.Throws<InvalidDataException>(() => new XmlProfileStore().Load(profilePath));
-            Assert.Contains("src/unknown.cs", exception.Message);
+            var exception = Assert.Throws<ProfileLoadException>(() => new XmlProfileStore().Load(profilePath));
+            Assert.Equal(2, exception.Errors.Count);
+            Assert.Contains(exception.Errors, error => error.Contains("src/unknown.cs", StringComparison.Ordinal));
+            Assert.Contains(exception.Errors, error => error.Contains("src/also-unknown.cs", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_ReportsErrorsFromProfileAndContentTogether()
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+        var profilePath = Path.Combine(temporaryDirectory, "profile.xml");
+
+        try
+        {
+            const string profileXml = """
+                <CodeSyncProfile schemaVersion="1">
+                  <SourceDirectory>source</SourceDirectory>
+                  <DestinationDirectory>destination</DestinationDirectory>
+                  <CreatedUtc>2026-08-27T10:30:00.0000000Z</CreatedUtc>
+                  <LastUpdatedUtc>2026-08-27T10:30:00.0000000Z</LastUpdatedUtc>
+                  <FileMappings>
+                    <FileMapping Source="../invalid.cs" Destination="lib/invalid.cs" />
+                    <FileMapping Destination="lib/missing-source.cs" />
+                  </FileMappings>
+                </CodeSyncProfile>
+                """;
+
+            const string contentXml = """
+                <CodeSyncContent schemaVersion="1">
+                  <SourceDirectory>source</SourceDirectory>
+                  <DestinationDirectory>destination</DestinationDirectory>
+                  <CreatedUtc>2026-08-27T10:30:00.0000000Z</CreatedUtc>
+                  <LastUpdatedUtc>2026-08-27T10:30:00.0000000Z</LastUpdatedUtc>
+                  <SourceFiles>
+                    <File Path="src/one.cs" Size="bad" LastWriteTimeUtc="2026-08-27T10:30:00.0000000Z" Sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" />
+                    <File Path="src/two.cs" Size="bad" LastWriteTimeUtc="2026-08-27T10:30:00.0000000Z" Sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" />
+                  </SourceFiles>
+                </CodeSyncContent>
+                """;
+
+            File.WriteAllText(profilePath, profileXml);
+            File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath), contentXml);
+
+            var exception = Assert.Throws<ProfileLoadException>(() => new XmlProfileStore().Load(profilePath));
+
+            Assert.Equal(4, exception.Errors.Count);
+            Assert.Contains(exception.Errors, error => error.StartsWith("Profile: Line ", StringComparison.Ordinal));
+            Assert.Contains(exception.Errors, error => error.StartsWith("Content inventory: Line ", StringComparison.Ordinal));
         }
         finally
         {
@@ -83,7 +145,7 @@ public sealed class XmlProfileStoreTests
             }
             else
             {
-                Assert.Throws<InvalidDataException>(() => new XmlProfileStore().Load(profilePath));
+                Assert.Throws<ProfileLoadException>(() => new XmlProfileStore().Load(profilePath));
             }
         }
         finally

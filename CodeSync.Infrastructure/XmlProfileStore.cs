@@ -1,4 +1,5 @@
 using System.Text;
+using System.Xml;
 
 using CodeSync.Core;
 
@@ -25,17 +26,87 @@ public sealed class XmlProfileStore : IProfileStore
     /// <inheritdoc/>
     public SyncProfile Load(string path)
     {
-        var document = LoadProfileDocument(path);
-        var content = LoadContent(path);
+        var errors = new List<string>();
 
-        ValidateRoots(document.Profile, content);
+        ProfileDocument? document = null;
+        ProfileContent? content = null;
 
-        var mappings = document.Profile.FileMappings.Select(CreateFileMapping);
+        try
+        {
+            document = LoadProfileDocument(path);
+        }
+        catch (Exception exception) when (IsProfileLoadError(exception))
+        {
+            AddLoadErrors(errors, exception, "Profile");
+        }
+
+        try
+        {
+            content = LoadContent(path);
+        }
+        catch (Exception exception) when (IsProfileLoadError(exception))
+        {
+            AddLoadErrors(errors, exception, "Content inventory");
+        }
+
+        if (document is null || content is null)
+            throw new ProfileLoadException(errors);
+
+        if (!PathUtils.PathComparer.Equals(document.Profile.SourceDirectory, content.SourceDirectory) ||
+            !PathUtils.PathComparer.Equals(document.Profile.DestinationDirectory, content.DestinationDirectory))
+        {
+            errors.Add("The profile and content inventory use different directory roots.");
+        }
+
+        var mappings = new List<FileMapping>(document.Profile.FileMappings.Count);
+
+        foreach (var mapping in document.Profile.FileMappings)
+        {
+            try
+            {
+                mappings.Add(CreateFileMapping(mapping));
+            }
+            catch (InvalidDataException exception)
+            {
+                errors.Add(exception.Message);
+            }
+            catch (ArgumentException exception)
+            {
+                errors.Add($"Mapping '{mapping.SourcePath}' -> '{mapping.DestinationPath}': {exception.Message}");
+            }
+        }
+
+        if (errors.Count > 0)
+            throw new ProfileLoadException(errors);
 
         return new SyncProfile(document.Profile.SourceDirectory,
                                document.Profile.DestinationDirectory,
                                document.Profile.DirectoryReferences,
                                mappings);
+
+        //
+        // Determines whether the exception is one of the known profile load errors.
+        //
+        static bool IsProfileLoadError(Exception exception) => exception is ProfileLoadException
+                                                                         or InvalidDataException
+                                                                         or XmlException
+                                                                         or IOException
+                                                                         or UnauthorizedAccessException
+                                                                         or ArgumentException;
+
+        //
+        // Adds the error messages from the exception to the list of errors, prefixed with the document name.
+        //
+        static void AddLoadErrors(List<string> errors, Exception exception, string documentName)
+        {
+            if (exception is ProfileLoadException profileException)
+            {
+                errors.AddRange(profileException.Errors.Select(error => $"{documentName}: {error}"));
+                return;
+            }
+
+            errors.Add($"{documentName}: {exception.Message}");
+        }
 
         //
         // Maps profile mappings to file mappings using the resolved content.
@@ -61,7 +132,6 @@ public sealed class XmlProfileStore : IProfileStore
 
         //
         // Resolves a source file snapshot from the content inventory.
-        // Throws an exception if the file is not found.
         //
         static FileSnapshot ResolveSource(ProfileContent content, string path)
         {

@@ -51,6 +51,14 @@ internal static class Program
                 _ => UnknownCommand(command)
             };
         }
+        catch (ProfileLoadException ex)
+        {
+            Console.Error.WriteLine($"Error: se encontraron {ex.Errors.Count} errores al cargar el perfil:");
+            foreach (var error in ex.Errors)
+                Console.Error.WriteLine($"  - {error}");
+
+            return ExitCodeError;
+        }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error: {ex.Message}");
@@ -147,6 +155,18 @@ internal static class Program
 
         ConflictStore.Save(ProfileArtifacts.GetConflictsPath(profilePath), conflicts);
         ProfileStore.RefreshContent(profilePath, source, destination);
+
+        if (!result.IsValid)
+        {
+            Console.Error.WriteLine("Conflictos encontrados:");
+            foreach (var conflict in result.Conflicts)
+            {
+                var sourcePath = conflict.Mapping.Source?.Path ?? "(sin origen)";
+                var destinationPath = conflict.Mapping.DestinationPath ?? "(sin destino)";
+
+                Console.Error.WriteLine($"  {conflict.Kind}: {sourcePath} -> {destinationPath}");
+            }
+        }
 
         Console.WriteLine(result.IsValid
             ? "Verificación correcta: no se han encontrado conflictos."

@@ -116,6 +116,25 @@ public sealed class XmlCodecTests
     }
 
     [Fact]
+    public void SkippedXml_ReportsAllInvalidPathsWithLineNumbers()
+    {
+        const string xml = """
+            <CodeSyncSkipped schemaVersion="1">
+              <Files>
+                <File Source="../invalid-one.cs" />
+                <File />
+                <File Source="../invalid-two.cs" />
+              </Files>
+            </CodeSyncSkipped>
+            """;
+
+        var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeSkipped(xml));
+
+        Assert.Equal(3, exception.Errors.Count);
+        Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ProfileXml_RejectsLegacyRootAndUnsupportedVersion()
     {
         Assert.Throws<InvalidDataException>(() => XmlCodecs.DeserializeProfile(
@@ -139,6 +158,73 @@ public sealed class XmlCodecTests
             </CodeSyncProfile>
             """;
 
-        Assert.Throws<ArgumentException>(() => XmlCodecs.DeserializeProfile(xml));
-    }
+                Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeProfile(xml));
+        }
+
+        [Fact]
+        public void ProfileXml_ReportsAllInvalidEntriesWithLineNumbers()
+        {
+                const string xml = """
+                        <CodeSyncProfile schemaVersion="1">
+                            <SourceDirectory>source</SourceDirectory>
+                            <DestinationDirectory>destination</DestinationDirectory>
+                            <CreatedUtc>2026-08-27T10:30:00.0000000Z</CreatedUtc>
+                            <LastUpdatedUtc>2026-08-27T10:30:00.0000000Z</LastUpdatedUtc>
+                            <DirectoryReferences>
+                                <Directory Source="src" />
+                            </DirectoryReferences>
+                            <FileMappings>
+                                <FileMapping Source="../invalid.cs" Destination="lib/invalid.cs" />
+                                <FileMapping Destination="lib/missing-source.cs" />
+                            </FileMappings>
+                        </CodeSyncProfile>
+                        """;
+
+                var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeProfile(xml));
+
+                Assert.Equal(3, exception.Errors.Count);
+                Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void ContentXml_ReportsAllInvalidSnapshotsWithLineNumbers()
+        {
+                const string xml = """
+                        <CodeSyncContent schemaVersion="1">
+                            <SourceDirectory>source</SourceDirectory>
+                            <DestinationDirectory>destination</DestinationDirectory>
+                            <CreatedUtc>2026-08-27T10:30:00.0000000Z</CreatedUtc>
+                            <LastUpdatedUtc>2026-08-27T10:30:00.0000000Z</LastUpdatedUtc>
+                            <SourceFiles>
+                                <File Path="src/one.cs" Size="bad" LastWriteTimeUtc="2026-08-27T10:30:00.0000000Z" Sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" />
+                                <File Path="src/two.cs" Size="1" LastWriteTimeUtc="bad" Sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" />
+                            </SourceFiles>
+                        </CodeSyncContent>
+                        """;
+
+                var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeContent(xml));
+
+                Assert.Equal(2, exception.Errors.Count);
+                Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void ConflictsXml_ReportsAllInvalidEntriesWithLineNumbers()
+        {
+                const string xml = """
+                        <CodeSyncConflicts schemaVersion="1">
+                            <SourceDirectory>source</SourceDirectory>
+                            <DestinationDirectory>destination</DestinationDirectory>
+                            <SourceWithoutDestination>
+                                <FileMapping />
+                                <FileMapping Source="../invalid.cs" />
+                            </SourceWithoutDestination>
+                        </CodeSyncConflicts>
+                        """;
+
+                var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeConflicts(xml));
+
+                Assert.Equal(2, exception.Errors.Count);
+                Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));
+        }
 }
