@@ -44,7 +44,9 @@ public sealed class XmlProfileStore : IProfileStore
         {
             var source = mapping.SourcePath is null
                 ? null
-                : ResolveSource(content, mapping.SourcePath);
+                : mapping.IsIgnored
+                    ? content.FindSource(mapping.SourcePath)
+                    : ResolveSource(content, mapping.SourcePath);
 
             var destination = mapping.DestinationPath is null
                 ? null

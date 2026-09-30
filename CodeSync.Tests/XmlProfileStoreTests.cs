@@ -47,6 +47,51 @@ public sealed class XmlProfileStoreTests
     }
 
     [Fact]
+    public void Load_AllowsIgnoredSourceMissingFromContentInventoryWhenDestinationExists()
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+        var profilePath = Path.Combine(temporaryDirectory, "profile.xml");
+
+        try
+        {
+            var definition = new ProfileDefinition(
+                sourceDirectory: "source",
+                destinationDirectory: "destination",
+                directoryReferences: [],
+                fileMappings:
+                [
+                    new ProfileMapping(sourcePath: "src/ignored.cs",
+                                       destinationPath: "lib/ignored.cs",
+                                       isIgnored: true)
+                ]);
+            var content = new ProfileContent(
+                sourceDirectory: "source",
+                destinationDirectory: "destination",
+                createdUtc: FixedTime,
+                lastUpdatedUtc: FixedTime,
+                sourceFiles: [],
+                destinationFiles: [new FileSnapshot("lib/ignored.cs", 7, FixedTime, Hash)]);
+
+            File.WriteAllText(profilePath,
+                              XmlCodecs.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
+            File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath),
+                              XmlCodecs.SerializeContent(content));
+
+            var mapping = Assert.Single(new XmlProfileStore().Load(profilePath).FileMappings);
+            Assert.True(mapping.IsIgnored);
+            Assert.Null(mapping.Source);
+            Assert.Equal("lib/ignored.cs", mapping.DestinationPath);
+            Assert.NotNull(mapping.Destination);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Load_AllowsIgnoredDestinationSuggestionMissingFromContentInventory()
     {
         var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
