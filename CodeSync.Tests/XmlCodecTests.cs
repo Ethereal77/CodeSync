@@ -35,6 +35,13 @@ public sealed class XmlCodecTests
         Assert.DoesNotContain("Size=", serialized);
         Assert.DoesNotContain("Sha256=", serialized);
         Assert.Contains("CodeSync Profile v1", serialized);
+
+        Assert.StartsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?>", serialized);
+        Assert.Contains("<!--", serialized);
+        Assert.Contains("-->", serialized);
+        Assert.Contains("<CodeSyncProfile schemaVersion=\"1\">", serialized);
+        Assert.Contains("    <Directory Source=\"src\"", serialized);
+        Assert.Contains("Destination=\"lib\" />", serialized);
     }
 
     [Fact]
@@ -56,6 +63,9 @@ public sealed class XmlCodecTests
         Assert.Contains("Sha256=", serialized);
         Assert.DoesNotContain("size=", serialized);
         Assert.DoesNotContain("sha256=", serialized);
+
+        Assert.Contains("    <File Path=\"src/old.cs\"\r\n          Size=\"3\"", serialized);
+        Assert.Contains("    <!--\r\n      The following file metadata was discovered in the source directory.\r\n    -->", serialized);
     }
 
     [Fact]
@@ -88,6 +98,9 @@ public sealed class XmlCodecTests
         Assert.DoesNotContain("kind=", serialized);
         Assert.DoesNotContain("Size=", serialized);
         Assert.Contains("Destination=\"lib/extra.cs\"", serialized);
+
+        Assert.Contains("    <!--\r\n      ", serialized);
+        Assert.Contains("\r\n    -->", serialized);
     }
 
     [Fact]

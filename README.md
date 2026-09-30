@@ -15,7 +15,7 @@ CodeSync works with two directory trees:
 - **Destination** is the tree that receives copied files.
 
 The initial comparison identifies files with the same size and SHA-256 hash.
-* A content match is accepted only when it is unique on both sides
+* A content match is accepted only **when it is unique on both sides**.
 * Duplicate identical files are reported as ambiguous rather than guessed.
 * The comparison also records directory references inferred from complete, uniquely matched directories.
 
@@ -23,28 +23,28 @@ The resulting profile is a reviewed, persistent mapping. Later copies use it eve
 contents have changed.
 
 ```text
-Source directory + Destination directory
-                 |
-                 v
-              compare
-                 |
-                 +--> Profile.xml           : Confirmed file mappings
-                 +--> Profile.content.xml   : Source and destination snapshots
-                 +--> Profile.conflicts.xml : Items needing review
-                 |
-                 v
-       review / complete the profile
-                 |
-                 v
-               verify
-                 |
-                 v
-            copy [--dry-run]
-                 |
-                 +--> Profile.skipped.xml : Unchanged source files
-                 |
-                 v
-               update
+Source directory ─┬─ Destination directory
+                  │
+                  ▼
+               compare
+                  │
+                  ├──▶ Profile.xml           : Confirmed file mappings
+                  ├──▶ Profile.content.xml   : Source and destination snapshots
+                  ├──▶ Profile.conflicts.xml : Items needing review
+                  │
+                  ▼
+        review / complete the profile
+                  │
+                  ▼
+                verify
+                  │
+                  ▼
+             copy [--dry-run]
+                  │
+                  ├──▶ Profile.skipped.xml : Unchanged source files
+                  │
+                  ▼
+                update
 ```
 
 ## Requirements
@@ -126,7 +126,7 @@ CodeSync verify 'C:\profiles\source-to-destination.xml'
 ```
 
 Verification checks the mapping and file coverage, not whether the source and destination contents
-still match. This is deliberate: a changed source file is what `copy` is intended to transfer.
+still match. This is deliberate: **a changed source file is what `copy` is intended to transfer**.
 
 ### `copy`
 
@@ -135,14 +135,14 @@ CodeSync copy <profile.xml> [--dry-run]
 ```
 
 Copies every changed mapped source file to its mapped destination, creating destination
-parent directories when necessary. Destination files are overwritten.
+parent directories when necessary. **Destination files are overwritten**.
 
 Before copying, CodeSync refuses to run if the profile has unresolved conflicts.
 
-For each mapped source file, CodeSync compares the stored snapshot from `<profile>.content.xml` with the current source size,
-UTC last-write time, and SHA-256 hash:
+For each mapped source file, CodeSync compares the stored snapshot from `<profile>.content.xml`
+with the current source size, UTC last-write time, and SHA-256 hash:
 
-- A changed source is copied and its snapshots in the content sidecar are refreshed.
+- A changed source is copied and its snapshots in the content database are refreshed.
 - An unchanged source is skipped and recorded in `<profile>.skipped.xml`.
 - A source-only mapping (no destination) is treated as intentionally ignored.
 
@@ -213,7 +213,7 @@ A typical generated profile has this shape:
 </CodeSyncProfile>
 ```
 
-The metadata sidecar contains the corresponding technical state:
+The metadata database contains the corresponding technical state:
 
 ```xml
 <CodeSyncContent schemaVersion="1">

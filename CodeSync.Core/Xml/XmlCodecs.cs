@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Xml.Linq;
 
 namespace CodeSync.Core;
@@ -26,20 +28,6 @@ public static class XmlCodecs
 
 
     #region Serialization / Deserialization helpers
-
-    /// <summary>
-    ///   Converts an XML element to an XML string.
-    /// </summary>
-    /// <param name="root">The root XML element to convert.</param>
-    /// <param name="header">The header comment to include in the XML document.</param>
-    /// <returns>An XML string representing the XML element.</returns>
-    private static string ToXmlDocumentString(XElement root, string header)
-    {
-        var xmlDeclaration = new XDeclaration("1.0", "utf-8", standalone: null);
-        var xmlDocument = new XDocument(xmlDeclaration, new XComment($"\n{header}\n"), root);
-
-        return xmlDocument.ToString(SaveOptions.None);
-    }
 
     /// <summary>
     ///   Loads the root XML element from an XML string and validates it
@@ -106,6 +94,19 @@ public static class XmlCodecs
         return string.IsNullOrWhiteSpace(value)
             ? throw new InvalidDataException($"The XML element '{element.Name.LocalName}' requires '{name}'.")
             : value;
+    }
+
+    /// <summary>
+    ///   Retrieves the value of an optional XML attribute.
+    /// </summary>
+    /// <param name="element">The XML element containing the attribute.</param>
+    /// <param name="name">The name of the attribute.</param>
+    /// <returns>The value of the attribute, or <c>null</c> if it is not present or empty.</returns>
+    private static string? OptionalAttribute(XElement element, string name)
+    {
+        var value = (string?) element.Attribute(name);
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     /// <summary>
@@ -187,45 +188,106 @@ public static class XmlCodecs
         ArgumentNullException.ThrowIfNull(document);
 
         var profile = document.Profile;
+        var writer = new FormattedXmlWriter();
 
-        var root = new XElement(ProfileRoot,
-            new XAttribute("schemaVersion", SchemaVersion),
-            new XElement("SourceDirectory", profile.SourceDirectory),
-            new XElement("DestinationDirectory", profile.DestinationDirectory),
-            new XElement("CreatedUtc", FormatTimestamp(document.CreatedUtc)),
-            new XElement("LastUpdatedUtc", FormatTimestamp(document.LastUpdatedUtc)),
-            new XElement("DirectoryReferences",
-                new XComment("\n    Known source-to-destination directory relationships.\n  "),
-                profile.DirectoryReferences.Select(SerializeDirectoryReference)),
-            new XElement("FileMappings",
-                new XComment("\n    Editable file relationships. A mapping with only Source is intentionally ignored.\n  "),
-                profile.FileMappings.Select(SerializeProfileMapping)));
+        writer.WriteDeclaration();
+        writer.WriteComment($"""
+                              CodeSync Profile v{SchemaVersion}
 
-        var header = $"""
-                        CodeSync Profile v{SchemaVersion}
+                                Source:      {profile.SourceDirectory}
+                                Destination: {profile.DestinationDirectory}
 
-                          Source:      {profile.SourceDirectory}
-                          Destination: {profile.DestinationDirectory}
+                                Created:     {FormatHeaderTimestamp(document.CreatedUtc)}
+                                Last update: {FormatHeaderTimestamp(document.LastUpdatedUtc)}
+                            """);
 
-                          Created:     {FormatHeaderTimestamp(document.CreatedUtc)}
-                          Last update: {FormatHeaderTimestamp(document.LastUpdatedUtc)}
-                      """;
+        writer.WriteStartElement(ProfileRoot, [("schemaVersion", SchemaVersion)]);
+        writer.WriteBlankLine();
 
-        return ToXmlDocumentString(root, header);
-    }
+        writer.WriteElement("SourceDirectory", profile.SourceDirectory, indent: 2);
+        writer.WriteElement("DestinationDirectory", profile.DestinationDirectory, indent: 2);
+        writer.WriteBlankLine();
 
-    /// <summary>
-    ///   Serializes a hydrated profile and its timestamps as an editable profile document.
-    /// </summary>
-    /// <param name="profile">The hydrated synchronization profile.</param>
-    /// <param name="createdUtc">The UTC creation time.</param>
-    /// <param name="lastUpdatedUtc">The UTC last-update time.</param>
-    /// <returns>A human-readable XML profile.</returns>
-    public static string SerializeProfile(SyncProfile profile, DateTime createdUtc, DateTime lastUpdatedUtc)
-    {
-        ArgumentNullException.ThrowIfNull(profile);
+        writer.WriteElement("CreatedUtc", FormatTimestamp(document.CreatedUtc), indent: 2);
+        writer.WriteElement("LastUpdatedUtc", FormatTimestamp(document.LastUpdatedUtc), indent: 2);
+        writer.WriteBlankLine();
 
-        return SerializeProfile(new ProfileDocument(ProfileDefinition.FromProfile(profile), createdUtc, lastUpdatedUtc));
+        SerializeDirectoryReference(writer, profile.DirectoryReferences);
+        writer.WriteBlankLine();
+
+        SerializeFileMappings(writer, profile.FileMappings);
+        writer.WriteBlankLine();
+
+        writer.WriteEndElement(ProfileRoot);
+
+        return writer.ToString();
+
+        //
+        // Serializes the directory references section of the profile.
+        //
+        static void SerializeDirectoryReference(FormattedXmlWriter writer, IEnumerable<DirectoryReference> directoryReferences)
+        {
+            writer.WriteStartElement("DirectoryReferences", attributes: [], indent: 2);
+
+            writer.WriteComment("""
+                              The following directories are known to match between source and destination.
+                              Any unknown file found under one of these directories will be automatically
+                              placed in the corresponding destination directory, albeit as a conflict for
+                              the user to check and correct.
+                            """,
+                            indent: 4);
+
+            bool first = true;
+
+            foreach (var reference in directoryReferences)
+            {
+                if (!first)
+                    writer.WriteBlankLine();
+
+                writer.WriteEmptyElement("Directory",
+                                         attributes: [("Source", reference.SourcePath), ("Destination", reference.DestinationPath)],
+                                         indent: 4);
+                first = false;
+            }
+
+            writer.WriteBlankLine();
+            writer.WriteEndElement("DirectoryReferences", indent: 2);
+        }
+
+        //
+        // Serializes the file mappings section of the profile.
+        //
+        static void SerializeFileMappings(FormattedXmlWriter writer, IEnumerable<ProfileMapping> fileMappings)
+        {
+            writer.WriteStartElement("FileMappings", attributes: [], indent: 2);
+
+            writer.WriteComment("""
+                            The following files are either copied from a previous version of this CodeSync profile,
+                            or new matching files found that will be copied.
+                          """,
+                          indent: 4);
+
+            bool first = true;
+
+            foreach (var mapping in fileMappings)
+            {
+                Span<(string Name, string Value)> attributes =
+                [
+                    ("Source", mapping.SourcePath ?? ""),
+                    ("Destination", mapping.DestinationPath ?? "")
+                ];
+
+                if (!first)
+                    writer.WriteBlankLine();
+
+                writer.WriteEmptyElement("FileMapping", attributes, indent: 4);
+
+                first = false;
+            }
+
+            writer.WriteBlankLine();
+            writer.WriteEndElement("FileMappings", indent: 2);
+        }
     }
 
     /// <summary>
@@ -256,6 +318,26 @@ public static class XmlCodecs
         return new ProfileDocument(profile,
                                    RequiredUtc(root, "CreatedUtc"),
                                    RequiredUtc(root, "LastUpdatedUtc"));
+
+        //
+        // Parses an individual directory reference from its XML representation.
+        //
+        static DirectoryReference ParseDirectoryReference(XElement element)
+        {
+            return new DirectoryReference(
+                RequiredAttribute(element, "Source"),
+                RequiredAttribute(element, "Destination"));
+        }
+
+        //
+        // Parses an individual profile mapping from its XML representation.
+        //
+        static ProfileMapping ParseProfileMapping(XElement element)
+        {
+            return new ProfileMapping(
+                OptionalAttribute(element, "Source"),
+                OptionalAttribute(element, "Destination"));
+        }
     }
 
     #endregion
@@ -271,30 +353,79 @@ public static class XmlCodecs
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        var root = new XElement(ContentRoot,
-            new XAttribute("schemaVersion", SchemaVersion),
-            new XElement("SourceDirectory", content.SourceDirectory),
-            new XElement("DestinationDirectory", content.DestinationDirectory),
-            new XElement("CreatedUtc", FormatTimestamp(content.CreatedUtc)),
-            new XElement("LastUpdatedUtc", FormatTimestamp(content.LastUpdatedUtc)),
-            new XElement("SourceFiles",
-                new XComment("\n    File metadata discovered in the source directory.\n  "),
-                content.SourceFiles.OrderBy(file => file.Path, StringComparer.Ordinal).Select(SerializeSnapshot)),
-            new XElement("DestinationFiles",
-                new XComment("\n    File metadata discovered in the destination directory.\n  "),
-                content.DestinationFiles.OrderBy(file => file.Path, StringComparer.Ordinal).Select(SerializeSnapshot)));
+        var writer = new FormattedXmlWriter();
 
-        var header = $"""
-                        CodeSync Content v{SchemaVersion}
+        writer.WriteDeclaration();
+        writer.WriteComment($"""
+                              CodeSync Content v{SchemaVersion}
 
-                          Source:      {content.SourceDirectory}
-                          Destination: {content.DestinationDirectory}
+                                Source:      {content.SourceDirectory}
+                                Destination: {content.DestinationDirectory}
 
-                          Created:     {FormatHeaderTimestamp(content.CreatedUtc)}
-                          Last update: {FormatHeaderTimestamp(content.LastUpdatedUtc)}
-                      """;
+                                Created:     {FormatHeaderTimestamp(content.CreatedUtc)}
+                                Last update: {FormatHeaderTimestamp(content.LastUpdatedUtc)}
+                            """);
 
-        return ToXmlDocumentString(root, header);
+        writer.WriteStartElement(ContentRoot, [("schemaVersion", SchemaVersion)]);
+        writer.WriteBlankLine();
+
+        writer.WriteElement("SourceDirectory", content.SourceDirectory, indent: 2);
+        writer.WriteElement("DestinationDirectory", content.DestinationDirectory, indent: 2);
+        writer.WriteBlankLine();
+
+        writer.WriteElement("CreatedUtc", FormatTimestamp(content.CreatedUtc), indent: 2);
+        writer.WriteElement("LastUpdatedUtc", FormatTimestamp(content.LastUpdatedUtc), indent: 2);
+        writer.WriteBlankLine();
+
+        WriteSnapshotSection(writer,
+                             sectionName: "SourceFiles",
+                             description: "The following file metadata was discovered in the source directory.",
+                             content.SourceFiles);
+        writer.WriteBlankLine();
+
+        WriteSnapshotSection(writer,
+                             sectionName: "DestinationFiles",
+                             description: "The following file metadata was discovered in the destination directory.",
+                             content.DestinationFiles);
+        writer.WriteBlankLine();
+
+        writer.WriteEndElement(ContentRoot);
+
+        return writer.ToString();
+
+        //
+        // Writes a section of the XML containing file snapshots.
+        //
+        static void WriteSnapshotSection(FormattedXmlWriter writer,
+                                         string sectionName,
+                                         string description,
+                                         IEnumerable<FileSnapshot> snapshots)
+        {
+            writer.WriteStartElement(sectionName, attributes: [], indent: 2);
+
+            writer.WriteComment(description, indent: 4);
+
+            bool first = true;
+
+            foreach (var snapshot in snapshots.OrderBy(file => file.Path, StringComparer.Ordinal))
+            {
+                if (!first)
+                    writer.WriteBlankLine();
+
+                writer.WriteEmptyElement("File",
+                                         [
+                                             ("Path", snapshot.Path),
+                                             ("Size", snapshot.Size.ToString(CultureInfo.InvariantCulture)),
+                                             ("LastWriteTimeUtc", FormatTimestamp(snapshot.LastWriteTimeUtc)),
+                                             ("Sha256", snapshot.Sha256)
+                                         ],
+                                         indent: 4);
+                first = false;
+            }
+
+            writer.WriteBlankLine();
+            writer.WriteEndElement(sectionName, indent: 2);
+        }
     }
 
     /// <summary>
@@ -321,6 +452,23 @@ public static class XmlCodecs
             RequiredUtc(root, "LastUpdatedUtc"),
             sourceFiles,
             destinationFiles);
+
+        //
+        // Parses an individual file snapshot from its XML representation.
+        //
+        static FileSnapshot ParseSnapshot(XElement element)
+        {
+            var sizeXml = RequiredAttribute(element, "Size");
+
+            if (!long.TryParse(sizeXml, NumberStyles.None, CultureInfo.InvariantCulture, out var size))
+                throw new InvalidDataException("A file size must be an invariant integer.");
+
+            return new FileSnapshot(
+                RequiredAttribute(element, "Path"),
+                size,
+                RequiredUtcAttribute(element, "LastWriteTimeUtc"),
+                RequiredAttribute(element, "Sha256"));
+        }
     }
 
     #endregion
@@ -353,57 +501,127 @@ public static class XmlCodecs
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var root = new XElement(ConflictsRoot,
-            new XAttribute("schemaVersion", SchemaVersion),
-            new XElement("SourceDirectory", document.SourceDirectory),
-            new XElement("DestinationDirectory", document.DestinationDirectory),
-            ConflictSection(document, ConflictKind.DestinationWithoutSource),
-            ConflictSection(document, ConflictKind.SourceWithoutDestination),
-            ConflictSection(document, ConflictKind.AmbiguousMatch),
-            ConflictSection(document, ConflictKind.MissingMappedFile),
-            ConflictSection(document, ConflictKind.DuplicateMapping));
+        var writer = new FormattedXmlWriter();
 
-        var header = $"""
-                        CodeSync Conflicts v{SchemaVersion}
+        writer.WriteDeclaration();
+        writer.WriteComment($"""
+                              CodeSync Conflicts v{SchemaVersion}
 
-                          Source:      {document.SourceDirectory}
-                          Destination: {document.DestinationDirectory}
+                                Source:      {document.SourceDirectory}
+                                Destination: {document.DestinationDirectory}
 
-                          Review the sections below and update the profile before copying.
-                      """;
+                                Review the sections below and update the profile before copying.
+                            """);
 
-        return ToXmlDocumentString(root, header);
+        writer.WriteStartElement(ConflictsRoot, [("schemaVersion", SchemaVersion)]);
+        writer.WriteBlankLine();
 
-        //
-        // Serializes a conflict section for the specified conflict kind.
-        //
-        static XElement ConflictSection(ConflictDocument source, ConflictKind kind)
+        writer.WriteElement("SourceDirectory", document.SourceDirectory, indent: 2);
+        writer.WriteElement("DestinationDirectory", document.DestinationDirectory, indent: 2);
+
+        foreach (ConflictKind conflictKind in ConflictDisplayOrder)
         {
-            var entries = source.Conflicts
+            writer.WriteBlankLine();
+            WriteConflictSection(writer, document, conflictKind);
+        }
+
+        writer.WriteBlankLine();
+        writer.WriteEndElement(ConflictsRoot);
+
+        return writer.ToString();
+
+        //
+        // Writes a section of the XML containing conflicts of a specific kind.
+        //
+        static void WriteConflictSection(FormattedXmlWriter writer,
+                                         ConflictDocument document,
+                                         ConflictKind kind)
+        {
+            writer.WriteStartElement(kind.ToString(), attributes: [], indent: 2);
+
+            writer.WriteComment(ConflictDescription(kind), indent: 4);
+
+            var conflictsOfKind = document.Conflicts
                 .Where(conflict => conflict.Kind == kind)
                 .OrderBy(conflict => conflict.SourcePath ?? string.Empty, StringComparer.Ordinal)
-                .ThenBy(conflict => conflict.DestinationPath ?? string.Empty, StringComparer.Ordinal)
-                .Select(SerializeConflictEntry);
+                .ThenBy(conflict => conflict.DestinationPath ?? string.Empty, StringComparer.Ordinal);
 
-            return new XElement(kind.ToString(),
-                new XComment($"\n    {ConflictDescription(kind)}\n  "),
-                entries);
+            bool first = true;
+
+            foreach (var conflict in conflictsOfKind)
+            {
+                Span<(string Name, string Value)> attributes =
+                [
+                    ("Source", conflict?.SourcePath ?? ""),
+                    ("Destination", conflict?.DestinationPath ?? "")
+                ];
+
+                if (!first)
+                    writer.WriteBlankLine();
+
+                writer.WriteEmptyElement("FileMapping", attributes, indent: 4);
+
+                first = false;
+            }
+
+            if (first)
+            {
+                // If no conflicts of this kind were found, write a comment indicating that
+                writer.WriteBlankLine();
+                writer.WriteComment("No files to see here. Move on.", indent: 4);
+            }
+
+            writer.WriteBlankLine();
+            writer.WriteEndElement(kind.ToString(), indent: 2);
         }
 
         //
-        // Serializes an individual conflict entry.
+        // Returns a human-readable description for the specified conflict kind.
         //
-        static XElement SerializeConflictEntry(ConflictEntry entry)
-        {
-            var attributes = new List<object>(capacity: 2);
+        static string ConflictDescription(ConflictKind kind)
+            => kind switch
+            {
+                ConflictKind.DestinationWithoutSource => """
+                      The following files are in the destination, but not in the source.
+                      Also, they could not be matched by size or content.
 
-            if (entry.SourcePath is not null)
-                attributes.Add(new XAttribute("Source", entry.SourcePath));
-            if (entry.DestinationPath is not null)
-                attributes.Add(new XAttribute("Destination", entry.DestinationPath));
+                      Maybe they are new additions, or renamed files.
 
-            return new XElement("FileMapping", attributes);
-        }
+                      You can check these files against the source files that have no destination to
+                      complete those if needed.
+                    """,
+
+                ConflictKind.SourceWithoutDestination => """
+                      The following files are found only in the source. They do not exist in the destination.
+
+                      This may be because these files are new additions in the source, or they have been renamed.
+
+                      Review these files to determine if they need to be added to the destination.
+                    """,
+
+                ConflictKind.AmbiguousMatch => """
+                      The following files have ambiguous content matches, i.e., multiple files
+                      have identical content.
+
+                      Review these files to determine the correct source-destination mapping.
+                    """,
+
+                ConflictKind.MissingMappedFile => """
+                      The following mappings refer to files that are no longer present.
+
+                      These mappings need to be reviewed and possibly removed.
+                    """,
+
+                ConflictKind.DuplicateMapping => """
+                      The following files have duplicate mappings, i.e., the same source or destination
+                      is referenced multiple times.
+
+                      Review these mappings to resolve the duplicates.
+                    """,
+
+                // This case should never be reached because all conflict kinds are handled explicitly
+                _ => throw new UnreachableException()
+            };
     }
 
     /// <summary>
@@ -422,6 +640,18 @@ public static class XmlCodecs
         return new ConflictDocument(RequiredText(root, "SourceDirectory"),
                                     RequiredText(root, "DestinationDirectory"),
                                     conflicts);
+
+        //
+        // Parses the conflict section of the XML document for a specific conflict kind.
+        //
+        static IEnumerable<ConflictEntry> ParseConflictSection(XElement root, ConflictKind kind)
+        {
+            return root.Element(kind.ToString())?.Elements("FileMapping")
+                .Select(element => new ConflictEntry(
+                    kind,
+                    OptionalAttribute(element, "Source"),
+                    OptionalAttribute(element, "Destination"))) ?? [];
+        }
     }
 
     #endregion
@@ -437,14 +667,40 @@ public static class XmlCodecs
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
 
-        var root = new XElement(SkippedRoot,
-            new XAttribute("schemaVersion", SchemaVersion),
-            new XElement("Files",
-                new XComment("\n    Source files that were unchanged during the last copy.\n  "),
-                sourcePaths.Select(path => new XElement("File",
-                    new XAttribute("Source", PathUtils.NormalizeFilePath(path))))));
+        var writer = new FormattedXmlWriter();
 
-        return ToXmlDocumentString(root, $"  CodeSync Skipped Files v{SchemaVersion}");
+        writer.WriteDeclaration();
+        writer.WriteComment($"  CodeSync Skipped Files v{SchemaVersion}");
+        writer.WriteBlankLine();
+
+        writer.WriteStartElement(SkippedRoot, [("schemaVersion", SchemaVersion)]);
+        writer.WriteBlankLine();
+
+        writer.WriteStartElement("Files", [], indent: 2);
+
+        writer.WriteComment("Source files that were unchanged during the last copy.", indent: 4);
+
+        bool first = true;
+
+        foreach (var sourcePath in sourcePaths)
+        {
+            if (first)
+                writer.WriteBlankLine();
+
+            writer.WriteEmptyElement("File",
+                                     [("Source", PathUtils.NormalizeFilePath(sourcePath))],
+                                     indent: 4);
+
+            first = false;
+        }
+
+        writer.WriteBlankLine();
+        writer.WriteEndElement("Files", indent: 2);
+
+        writer.WriteBlankLine();
+        writer.WriteEndElement(SkippedRoot);
+
+        return writer.ToString();
     }
 
     /// <summary>
@@ -466,142 +722,219 @@ public static class XmlCodecs
 
     #endregion
 
-
-    #region Mapping and snapshot helpers
+    #region Helper: FormattedXmlWriter
 
     /// <summary>
-    ///   Serializes an individual directory reference into its XML representation.
+    ///   A helper class for writing formatted XML and generating a human-readable XML string.
     /// </summary>
-    /// <param name="reference">The directory reference to serialize.</param>
-    /// <returns>The XML element representing the directory reference.</returns>
-    private static XElement SerializeDirectoryReference(DirectoryReference reference)
+    private sealed class FormattedXmlWriter
     {
-        return new XElement("Directory",
-            new XAttribute("Source", reference.SourcePath),
-            new XAttribute("Destination", reference.DestinationPath));
-    }
+        private readonly StringBuilder _builder = new();
 
-    /// <summary>
-    ///   Parses an individual directory reference from its XML representation.
-    /// </summary>
-    /// <param name="element">The XML element representing the directory reference.</param>
-    /// <returns>The parsed <see cref="DirectoryReference"/> instance.</returns>
-    private static DirectoryReference ParseDirectoryReference(XElement element)
-    {
-        return new DirectoryReference(
-            RequiredAttribute(element, "Source"),
-            RequiredAttribute(element, "Destination"));
-    }
 
-    /// <summary>
-    ///   Serializes an individual profile mapping into its XML representation.
-    /// </summary>
-    /// <param name="mapping">The profile mapping to serialize.</param>
-    /// <returns>The XML element representing the profile mapping.</returns>
-    private static XElement SerializeProfileMapping(ProfileMapping mapping)
-    {
-        var attributes = new List<object>(capacity: 2);
-
-        if (mapping.SourcePath is not null)
-            attributes.Add(new XAttribute("Source", mapping.SourcePath));
-        if (mapping.DestinationPath is not null)
-            attributes.Add(new XAttribute("Destination", mapping.DestinationPath));
-
-        return new XElement("FileMapping", attributes);
-    }
-
-    /// <summary>
-    ///   Parses an individual profile mapping from its XML representation.
-    /// </summary>
-    /// <param name="element">The XML element representing the profile mapping.</param>
-    /// <returns>The parsed <see cref="ProfileMapping"/> instance.</returns>
-    private static ProfileMapping ParseProfileMapping(XElement element)
-    {
-        return new ProfileMapping(
-            OptionalAttribute(element, "Source"),
-            OptionalAttribute(element, "Destination"));
-    }
-
-    /// <summary>
-    ///   Parses the conflict section of the XML document for a specific conflict kind.
-    /// </summary>
-    /// <param name="root">The root XML element containing the conflict section.</param>
-    /// <param name="kind">The kind of conflict to parse.</param>
-    /// <returns>
-    ///   A collection of <see cref="ConflictEntry"/> instances representing the conflicts of the specified kind.
-    /// </returns>
-    private static IEnumerable<ConflictEntry> ParseConflictSection(XElement root, ConflictKind kind)
-    {
-        return root.Element(kind.ToString())?.Elements("FileMapping")
-            .Select(element => new ConflictEntry(
-                kind,
-                OptionalAttribute(element, "Source"),
-                OptionalAttribute(element, "Destination"))) ?? [];
-    }
-
-    /// <summary>
-    ///   Retrieves the value of an optional XML attribute.
-    /// </summary>
-    /// <param name="element">The XML element containing the attribute.</param>
-    /// <param name="name">The name of the attribute.</param>
-    /// <returns>The value of the attribute, or <c>null</c> if it is not present or empty.</returns>
-    private static string? OptionalAttribute(XElement element, string name)
-    {
-        var value = (string?) element.Attribute(name);
-
-        return string.IsNullOrWhiteSpace(value) ? null : value;
-    }
-
-    /// <summary>
-    ///   Serializes an individual file snapshot to its XML representation.
-    /// </summary>
-    /// <param name="snapshot">The file snapshot to serialize.</param>
-    /// <returns>The XML element representing the file snapshot.</returns>
-    private static XElement SerializeSnapshot(FileSnapshot snapshot)
-    {
-        return new XElement("File",
-            new XAttribute("Path", snapshot.Path),
-            new XAttribute("Size", snapshot.Size.ToString(CultureInfo.InvariantCulture)),
-            new XAttribute("LastWriteTimeUtc", FormatTimestamp(snapshot.LastWriteTimeUtc)),
-            new XAttribute("Sha256", snapshot.Sha256));
-    }
-
-    /// <summary>
-    ///   Parses an individual file snapshot from its XML representation.
-    /// </summary>
-    /// <param name="element">The XML element representing the file snapshot.</param>
-    /// <returns>The parsed <see cref="FileSnapshot"/> instance.</returns>
-    /// <exception cref="InvalidDataException">Thrown if the file size is not a valid invariant integer.</exception>
-    private static FileSnapshot ParseSnapshot(XElement element)
-    {
-        var sizeXml = RequiredAttribute(element, "Size");
-
-        if (!long.TryParse(sizeXml, NumberStyles.None, CultureInfo.InvariantCulture, out var size))
-            throw new InvalidDataException("A file size must be an invariant integer.");
-
-        return new FileSnapshot(
-            RequiredAttribute(element, "Path"),
-            size,
-            RequiredUtcAttribute(element, "LastWriteTimeUtc"),
-            RequiredAttribute(element, "Sha256"));
-    }
-
-    /// <summary>
-    ///   Returns a human-readable description for the specified conflict kind.
-    /// </summary>
-    /// <param name="kind">The conflict kind to describe.</param>
-    /// <returns>A human-readable description of the conflict kind.</returns>
-    private static string ConflictDescription(ConflictKind kind)
-        => kind switch
+        /// <summary>
+        ///   Writes the XML declaration at the beginning of the document.
+        /// </summary>
+        public void WriteDeclaration()
         {
-            ConflictKind.DestinationWithoutSource => "Files found only in the destination.",
-            ConflictKind.SourceWithoutDestination => "Files found only in the source.",
-            ConflictKind.AmbiguousMatch => "Files whose content match is not unique.",
-            ConflictKind.MissingMappedFile => "Mappings that refer to files no longer present.",
-            ConflictKind.DuplicateMapping => "Mappings that use a source or destination more than once.",
+            _builder.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+        }
 
-            _ => "Files requiring review."
-        };
+        /// <summary>
+        ///   Writes an XML comment with the specified text and indentation.
+        /// </summary>
+        /// <param name="text">The text of the comment.</param>
+        /// <param name="indent">The number of spaces to indent the comment.</param>
+        public void WriteComment(string text, int indent = 0)
+        {
+            var span = text.AsSpan();
+
+            AppendIndentation(indent);
+            _builder.AppendLine("<!--");
+
+            foreach (var line in span.EnumerateLines())
+            {
+                var trimmedLine = line.Trim();
+                if (trimmedLine.IsEmpty)
+                {
+                    _builder.AppendLine();
+                }
+                else
+                {
+                    AppendIndentation(indent + 2);
+                    _builder.Append(trimmedLine).AppendLine();
+                }
+            }
+
+            AppendIndentation(indent);
+            _builder.AppendLine("-->");
+        }
+
+        /// <summary>
+        ///   Writes the start tag of an XML element with the specified name, attributes, and indentation.
+        /// </summary>
+        /// <param name="name">The name of the element.</param>
+        /// <param name="attributes">The attributes of the element.</param>
+        /// <param name="indent">The number of spaces to indent the element.</param>
+        public void WriteStartElement(string name,
+                                      ReadOnlySpan<(string Name, string Value)> attributes,
+                                      int indent = 0)
+        {
+            AppendIndentation(indent);
+
+            if (attributes.IsEmpty)
+            {
+                _builder.AppendLine($"<{name}>");
+            }
+            else
+            {
+                _builder.Append($"<{name} ");
+
+                bool first = true;
+
+                foreach (var (attrName, attrValue) in attributes)
+                {
+                    if (!first)
+                        _builder.Append(' ');
+
+                    _builder.Append($"{attrName}=\"{EscapeAttribute(attrValue)}\"");
+
+                    first = false;
+                }
+
+                _builder.AppendLine(">");
+            }
+        }
+
+        /// <summary>
+        ///   Writes an empty XML element with the specified name, attributes, and indentation.
+        /// </summary>
+        /// <param name="name">The name of the element.</param>
+        /// <param name="attributes">The attributes of the element.</param>
+        /// <param name="indent">The number of spaces to indent the element.</param>
+        public void WriteEmptyElement(string name,
+                                      ReadOnlySpan<(string Name, string Value)> attributes,
+                                      int indent = 0)
+        {
+            if (attributes.IsEmpty)
+            {
+                AppendIndentation(indent);
+                _builder.AppendLine($"<{name} />");
+                return;
+            }
+
+            if (attributes.Length == 1)
+            {
+                var (attrName, attrValue) = attributes[0];
+
+                AppendIndentation(indent);
+                _builder.AppendLine($"<{name} {attrName}=\"{EscapeAttribute(attrValue)}\" />");
+                return;
+            }
+
+            var continuationIndent = indent + name.Length + 2;
+
+            for (var index = 0; index < attributes.Length; index++)
+            {
+                var (attrName, attrValue) = attributes[index];
+
+                if (index == 0)
+                {
+                    AppendIndentation(indent);
+                    _builder.Append($"<{name} ");
+                }
+                else
+                {
+                    AppendIndentation(continuationIndent);
+                }
+
+                _builder.Append($"{attrName}=\"{EscapeAttribute(attrValue)}\"");
+
+                if (index < attributes.Length - 1)
+                {
+                    _builder.AppendLine();
+                }
+            }
+
+            _builder.AppendLine(" />");
+        }
+
+        /// <summary>
+        ///   Writes an XML element with the specified name, value, and indentation.
+        /// </summary>
+        /// <param name="name">The name of the element.</param>
+        /// <param name="value">The text content of the element.</param>
+        /// <param name="indent">The number of spaces to indent the element.</param>
+        public void WriteElement(string name, string value, int indent = 0)
+        {
+            AppendIndentation(indent);
+            _builder.AppendLine($"<{name}>{EscapeText(value)}</{name}>");
+        }
+
+        /// <summary>
+        ///   Writes the end tag of an XML element with the specified name and indentation.
+        /// </summary>
+        /// <param name="name">The name of the element.</param>
+        /// <param name="indent">The number of spaces to indent the element.</param>
+        public void WriteEndElement(string name, int indent = 0)
+        {
+            AppendIndentation(indent);
+            _builder.AppendLine($"</{name}>");
+        }
+
+        /// <summary>
+        ///   Writes indentation to the XML output based on the specified number of spaces.
+        /// </summary>
+        /// <param name="indent">The number of spaces to indent.</param>
+        public void AppendIndentation(int indent = 0)
+        {
+            if (indent > 0)
+            {
+                _builder.Append(' ', repeatCount: indent);
+            }
+        }
+
+        /// <summary>
+        ///   Writes a blank line to the XML output.
+        /// </summary>
+        public void WriteBlankLine()
+        {
+            _builder.AppendLine();
+        }
+
+        /// <summary>
+        ///   Returns the current XML content as a string.
+        /// </summary>
+        /// <returns>The current XML content as a string.</returns>
+        public override string ToString()
+        {
+            return _builder.ToString();
+        }
+
+        /// <summary>
+        ///   Escapes special characters in the text content of an XML element.
+        /// </summary>
+        /// <param name="value">The text content to escape.</param>
+        /// <returns>The escaped text content.</returns>
+        private static string EscapeText(string value)
+        {
+            return value.Replace("&", "&amp;", StringComparison.Ordinal)
+                .Replace("<", "&lt;", StringComparison.Ordinal)
+                .Replace(">", "&gt;", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        ///   Escapes special characters in the value of an XML attribute.
+        /// </summary>
+        /// <param name="value">The attribute value to escape.</param>
+        /// <returns>The escaped attribute value.</returns>
+        private static string EscapeAttribute(string value)
+        {
+            return EscapeText(value)
+                .Replace("\"", "&quot;", StringComparison.Ordinal)
+                .Replace("'", "&apos;", StringComparison.Ordinal);
+        }
+    }
 
     #endregion
 }
