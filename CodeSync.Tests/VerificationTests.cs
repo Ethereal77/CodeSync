@@ -53,7 +53,7 @@ public sealed class VerificationTests
     }
 
     [Fact]
-    public void Verify_ReportsDuplicateMappings()
+    public void Verify_WithExactRepeatedMapping_WarnsAndKeepsOneCopy()
     {
         var source = CreateFakeFileSnapshot(path: "src/file.cs", content: "source");
         var destination = CreateFakeFileSnapshot(path: "lib/file.cs", content: "destination");
@@ -61,7 +61,83 @@ public sealed class VerificationTests
 
         var result = new ProfileVerifier().Verify(CreateFakeProfile(mapping, mapping), [source], [destination]);
 
-        Assert.Contains(result.Conflicts, conflict => conflict.Kind == ConflictKind.DuplicateMapping);
+        Assert.True(result.IsValid);
+        Assert.Single(result.Warnings);
+        Assert.Single(result.CleanedProfile.FileMappings);
+    }
+
+    [Fact]
+    public void Verify_WithSharedDestination_RemovesAllInvolvedMappingsFromCleanedProfile()
+    {
+        var firstSource = CreateFakeFileSnapshot(path: "src/one.cs", content: "one");
+        var secondSource = CreateFakeFileSnapshot(path: "src/two.cs", content: "two");
+        var otherSource = CreateFakeFileSnapshot(path: "src/other.cs", content: "other");
+        var destination = CreateFakeFileSnapshot(path: "lib/file.cs", content: "destination");
+        var otherDestination = CreateFakeFileSnapshot(path: "lib/other.cs", content: "other");
+
+        var fakeProfile = CreateFakeProfile(new FileMapping(firstSource, destination),
+                                            new FileMapping(secondSource, destination),
+                                            new FileMapping(otherSource, otherDestination));
+
+        var result = new ProfileVerifier().Verify(
+            fakeProfile,
+            sourceFiles: [firstSource, secondSource, otherSource],
+            destinationFiles: [destination, otherDestination]);
+
+        Assert.Equal(2, result.Conflicts.Count);
+        Assert.All(result.Conflicts, conflict => Assert.Equal(ConflictKind.DuplicateMapping, conflict.Kind));
+
+        var remaining = Assert.Single(result.CleanedProfile.FileMappings);
+        Assert.Equal("src/other.cs", remaining.Source!.Path);
+    }
+
+    [Fact]
+    public void Verify_WithSharedSource_DoesNotReportRemovedFilesAsUncovered()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/file.cs", content: "source");
+        var firstDestination = CreateFakeFileSnapshot(path: "lib/one.cs", content: "one");
+        var secondDestination = CreateFakeFileSnapshot(path: "lib/two.cs", content: "two");
+
+        var fakeProfile = CreateFakeProfile(new FileMapping(source, firstDestination),
+                                            new FileMapping(source, secondDestination));
+
+        var result = new ProfileVerifier().Verify(
+            fakeProfile,
+            sourceFiles: [source],
+            destinationFiles: [firstDestination, secondDestination]);
+
+        Assert.Equal(2, result.Conflicts.Count);
+        Assert.All(result.Conflicts, conflict => Assert.Equal(ConflictKind.DuplicateMapping, conflict.Kind));
+        Assert.Empty(result.CleanedProfile.FileMappings);
+    }
+
+    [Fact]
+    public void Verify_WithMissingMappedFile_RemovesMappingFromCleanedProfile()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/file.cs", content: "source");
+        var destination = CreateFakeFileSnapshot(path: "lib/file.cs", content: "destination");
+        var mapping = new FileMapping(source, destination);
+
+        var fakeProfile = CreateFakeProfile(mapping);
+
+        var result = new ProfileVerifier().Verify(fakeProfile, sourceFiles: [source], destinationFiles: []);
+
+        Assert.Empty(result.CleanedProfile.FileMappings);
+    }
+
+    [Fact]
+    public void Verify_WithValidProfile_ReturnsSameProfileInstance()
+    {
+        var source = CreateFakeFileSnapshot(path: "src/file.cs", content: "source");
+        var destination = CreateFakeFileSnapshot(path: "lib/file.cs", content: "destination");
+        var mapping = new FileMapping(source, destination);
+
+        var fakeProfile = CreateFakeProfile(mapping);
+
+        var result = new ProfileVerifier().Verify(fakeProfile, sourceFiles: [source], destinationFiles: [destination]);
+
+        Assert.Same(fakeProfile, result.CleanedProfile);
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]

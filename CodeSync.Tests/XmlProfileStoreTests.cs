@@ -45,6 +45,62 @@ public sealed class XmlProfileStoreTests
     }
 
     [Fact]
+    public void SaveCleanedProfile_WithDuplicateMappings_KeepsThemOnlyInConflictSidecar()
+    {
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+
+        var profilePath = Path.Combine(temporaryDirectory, "profile.xml");
+        var conflictsPath = ProfileArtifacts.GetConflictsPath(profilePath);
+
+        var firstSource = new FileSnapshot("src/one.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash);
+        var secondSource = new FileSnapshot("src/two.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash);
+        var okSource = new FileSnapshot("src/ok.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash);
+        var sharedDestination = new FileSnapshot("lib/shared.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash);
+        var okDestination = new FileSnapshot("lib/ok.cs", size: 1, lastWriteTimeUtc: FixedTime, sha256: Hash);
+
+        var profile = new SyncProfile(sourceDirectory: "source",
+                                      destinationDirectory: "destination",
+                                      directoryReferences: [],
+                                      fileMappings:
+                                      [
+                                        new FileMapping(firstSource, sharedDestination),
+                                        new FileMapping(secondSource, sharedDestination),
+                                        new FileMapping(okSource, okDestination)
+                                      ]);
+
+        var store = new XmlProfileStore();
+
+        try
+        {
+            store.SaveNew(profilePath, profile,
+                          sourceFiles: [firstSource, secondSource, okSource],
+                          destinationFiles: [sharedDestination, okDestination]);
+
+            var loadedProfile = store.Load(profilePath);
+
+            var result = new ProfileVerifier().Verify(loadedProfile,
+                                                      sourceFiles: [firstSource, secondSource, okSource],
+                                                      destinationFiles: [sharedDestination, okDestination]);
+
+            var conflictSet = new ConflictSet(profile.SourceDirectory, profile.DestinationDirectory, result.Conflicts);
+            new XmlConflictStore().Save(conflictsPath, conflictSet);
+            store.Save(profilePath, result.CleanedProfile);
+
+            var reloaded = store.Load(profilePath);
+            var persistedConflicts = new XmlConflictStore().Load(conflictsPath)!;
+
+            Assert.Equal("src/ok.cs", Assert.Single(reloaded.FileMappings).Source!.Path);
+            Assert.Equal(2, persistedConflicts.Conflicts.Count(conflict => conflict.Kind == ConflictKind.DuplicateMapping));
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+                Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SaveNew_WithNewProfile_DoesNotCreateBackups()
     {
         var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CodeSyncTests", Guid.NewGuid().ToString("N"));

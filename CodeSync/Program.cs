@@ -159,7 +159,20 @@ internal static class Program
         var conflicts = new ConflictSet(profile.SourceDirectory, profile.DestinationDirectory, result.Conflicts);
 
         ConflictStore.Save(ProfileArtifacts.GetConflictsPath(profilePath), conflicts);
+
+        // Conflicts are saved first so that a failed profile write never loses the removed mappings
+        var removedMappings = profile.FileMappings.Count - result.CleanedProfile.FileMappings.Count;
+
+        if (removedMappings > 0)
+            ProfileStore.Save(profilePath, result.CleanedProfile);
+
         ProfileStore.RefreshContent(profilePath, source, destination);
+
+        foreach (var warning in result.Warnings)
+            Console.Error.WriteLine($"Aviso: {warning}");
+
+        if (removedMappings > 0)
+            Console.WriteLine($"Se han retirado {removedMappings} entradas del perfil (conflictos o repetidas exactas).");
 
         if (!result.IsValid)
         {

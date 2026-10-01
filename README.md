@@ -37,14 +37,16 @@ Source directory ─┬─ Destination directory
                   │
                   ▼
                 verify
-                  │
-                  ▼
-             copy [--dry-run]
-                  │
-                  ├──▶ Profile.skipped.xml : Unchanged source files
-                  │
-                  ▼
-                update
+            ┌─────┴─────┐
+         conflicts    clean
+            │           │
+            ▼           ▼
+      review, edit   copy [--dry-run]
+      and verify        │
+        again           ├──▶ Profile.skipped.xml : Unchanged source files
+                        │
+                        ▼
+                      update
 ```
 
 ## Requirements
@@ -106,18 +108,27 @@ it loads `.gitignore` files found throughout each tree, so nested rules are resp
 CodeSync verify <profile.xml>
 ```
 
-Checks that the profile still covers the current source and destination trees. It reports:
-* missing mapped files,
-* duplicate mappings, and
-* files that are not covered by the profile,
+Checks that the profile still covers the current source and destination trees, then writes the
+current conflict report beside the profile. Conflicting mappings are removed from the main profile
+and kept in the conflict report:
 
-then writes the current conflict report beside the profile.
+- `DuplicateMapping`: every mapping involved in a repeated source or destination path is removed.
+- `MissingMappedFile`: the mapping whose source or destination file is missing is removed.
+- `SourceWithoutDestination` and `DestinationWithoutSource`: uncovered files are listed in the
+  conflict report but are not added to the profile.
+
+Exact repeated entries (same source, destination, and ignore state) are merged into one profile
+entry with a warning; they are not conflicts. The profile therefore contains only valid mappings
+and explicit ignores after verification.
 
 The content inventory is refreshed with the files found by the verification scan, including files
 that are newly reported as conflicts.
 
-`verify` stops immediately if its existing conflict report is not empty.
-Resolve and clear that report first, then verify again.
+`verify` stops immediately if its existing conflict report contains even one conflict. Resolve all
+entries and clear the report (or remove it) before running `verify` again. A successful run replaces
+the empty or missing report with newly detected conflicts. Repeat the review cycle until a run
+produces an empty report; unresolved entries must be reviewed before verification or copying can
+continue.
 
 Example:
 
@@ -173,22 +184,31 @@ CodeSync update 'C:\profiles\source-to-destination.xml'
 ## Resolving conflicts
 
 CodeSync never guesses when a match is missing or ambiguous. Inspect the generated `*.conflicts.xml`
-report and decide how the files should relate. The current workflow supports manual profile editing:
+report and decide how the files should relate. `verify` removes `DuplicateMapping` and
+`MissingMappedFile` entries from the profile, leaving those decisions in the report for review.
+Re-add only the mappings you have resolved, or add explicit ignores. The workflow is:
 
-1. Add or correct the required `<FileMapping>` entries in the profile.
+1. Inspect each conflict and decide whether it should be copied, ignored, or left unresolved.
 
-2. A mapping with both `Source` and `Destination` means “copy this source file to this destination file.”
+2. Add or correct the required `<FileMapping>` entries in the profile. A mapping with both `Source`
+  and `Destination` means “copy this source file to this destination file.” For `DuplicateMapping`,
+  restore only the intended one-to-one mappings; all entries sharing a repeated source or
+  destination were removed.
 
 3. To explicitly ignore a conflict, add an `<Ignore>` entry inside `<FileMappings>`. It may contain
-  `Source`, `Destination`, or both paths. This makes the decision visible in the profile and does not
-  require the ignored destination to exist.
+  `Source`, `Destination`, or both paths. This makes the decision visible in the profile and does
+  not require the ignored destination to exist.
+  Ignoring a conflict is as simple as replacing the `FileMapping` tag in `<FileMapping>` with
+  `Ignore`.
 
 4. A source-only conflict may contain a suggested `Destination` inferred from the most specific
-  `DirectoryReference`. Review or correct that path. To copy the file, change the entry to
+  `DirectoryReference`. Review or correct that path. To copy the file, add a
   `<FileMapping Source="..." Destination="..." />`; the destination file may be created by `copy`.
 
-5. Clear the resolved entries from the conflict report, then run `verify` again.
-   `copy` is enabled only when the report is empty and verification succeeds.
+5. After resolving every entry in the current report, clear the report or remove it, then run
+  `verify` again. It refuses to run if even one conflict remains in the existing report. Review
+  any newly generated conflicts and repeat. `copy` is enabled only when the report is empty and
+  verification succeeds.
 
 Profiles store absolute root directories and normalized relative file paths. File metadata is kept
 separately in `<profile>.content.xml`. Source paths must be present in that inventory; a destination
