@@ -1,4 +1,5 @@
 using CodeSync.Core;
+using CodeSync.Core.Xml;
 
 namespace CodeSync.Tests;
 
@@ -22,8 +23,8 @@ public sealed class XmlCodecTests
                                            createdUtc: FixedTime,
                                            lastUpdatedUtc: FixedTime.AddMinutes(5));
 
-        var serialized = XmlCodecs.SerializeProfile(document);
-        var restored = XmlCodecs.DeserializeProfile(serialized);
+        var serialized = XmlProfile.SerializeProfile(document);
+        var restored = XmlProfile.DeserializeProfile(serialized);
 
         Assert.Equal(definition.SourceDirectory, restored.Profile.SourceDirectory);
         Assert.Equal(definition.DestinationDirectory, restored.Profile.DestinationDirectory);
@@ -54,8 +55,8 @@ public sealed class XmlCodecTests
 
         var content = new ProfileContent("source", "destination", FixedTime, FixedTime, [source], [destination]);
 
-        var serialized = XmlCodecs.SerializeContent(content);
-        var restored = XmlCodecs.DeserializeContent(serialized);
+        var serialized = XmlContent.SerializeContent(content);
+        var restored = XmlContent.DeserializeContent(serialized);
 
         Assert.Equal(source, Assert.Single(restored.SourceFiles));
         Assert.Equal(destination, Assert.Single(restored.DestinationFiles));
@@ -87,8 +88,8 @@ public sealed class XmlCodecTests
                 new Conflict(ConflictKind.DestinationWithoutSource, new FileMapping(null, destination))
             ]);
 
-        var serialized = XmlCodecs.SerializeConflicts(conflicts);
-        var restored = XmlCodecs.DeserializeConflicts(serialized);
+        var serialized = XmlConflicts.SerializeConflicts(conflicts);
+        var restored = XmlConflicts.DeserializeConflicts(serialized);
 
         Assert.Equal([ConflictKind.DestinationWithoutSource,
                       ConflictKind.SourceWithoutDestination,
@@ -108,8 +109,8 @@ public sealed class XmlCodecTests
     [Fact]
     public void SkippedXml_NormalizesAndRoundTripsSourcePaths()
     {
-        var serialized = XmlCodecs.SerializeSkipped(sourcePaths: [@"src\\unchanged.cs", "src/other.cs"]);
-        var restored = XmlCodecs.DeserializeSkipped(serialized);
+        var serialized = XmlSkipped.SerializeSkipped(sourcePaths: [@"src\\unchanged.cs", "src/other.cs"]);
+        var restored = XmlSkipped.DeserializeSkipped(serialized);
 
         Assert.Equal(["src/unchanged.cs", "src/other.cs"], restored);
         Assert.Contains("Source=\"src/unchanged.cs\"", serialized);
@@ -128,7 +129,7 @@ public sealed class XmlCodecTests
             </CodeSyncSkipped>
             """;
 
-        var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeSkipped(xml));
+        var exception = Assert.Throws<ProfileLoadException>(() => XmlSkipped.DeserializeSkipped(xml));
 
         Assert.Equal(3, exception.Errors.Count);
         Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));
@@ -137,9 +138,9 @@ public sealed class XmlCodecTests
     [Fact]
     public void ProfileXml_RejectsLegacyRootAndUnsupportedVersion()
     {
-        Assert.Throws<InvalidDataException>(() => XmlCodecs.DeserializeProfile(
+        Assert.Throws<InvalidDataException>(() => XmlProfile.DeserializeProfile(
             "<CodeSync><SourceDirectory>source</SourceDirectory><DestinationDirectory>destination</DestinationDirectory></CodeSync>"));
-        Assert.Throws<InvalidDataException>(() => XmlCodecs.DeserializeProfile(
+        Assert.Throws<InvalidDataException>(() => XmlProfile.DeserializeProfile(
             "<CodeSyncProfile schemaVersion=\"2\" />"));
     }
 
@@ -158,8 +159,8 @@ public sealed class XmlCodecTests
             </CodeSyncProfile>
             """;
 
-                Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeProfile(xml));
-        }
+        Assert.Throws<ProfileLoadException>(() => XmlProfile.DeserializeProfile(xml));
+    }
 
         [Fact]
         public void ProfileXml_ReportsAllInvalidEntriesWithLineNumbers()
@@ -180,7 +181,7 @@ public sealed class XmlCodecTests
                         </CodeSyncProfile>
                         """;
 
-                var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeProfile(xml));
+                var exception = Assert.Throws<ProfileLoadException>(() => XmlProfile.DeserializeProfile(xml));
 
                 Assert.Equal(3, exception.Errors.Count);
                 Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));
@@ -202,7 +203,7 @@ public sealed class XmlCodecTests
                         </CodeSyncContent>
                         """;
 
-                var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeContent(xml));
+                var exception = Assert.Throws<ProfileLoadException>(() => XmlContent.DeserializeContent(xml));
 
                 Assert.Equal(2, exception.Errors.Count);
                 Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));
@@ -222,7 +223,7 @@ public sealed class XmlCodecTests
                         </CodeSyncConflicts>
                         """;
 
-                var exception = Assert.Throws<ProfileLoadException>(() => XmlCodecs.DeserializeConflicts(xml));
+                var exception = Assert.Throws<ProfileLoadException>(() => XmlConflicts.DeserializeConflicts(xml));
 
                 Assert.Equal(2, exception.Errors.Count);
                 Assert.All(exception.Errors, error => Assert.StartsWith("Line ", error, StringComparison.Ordinal));

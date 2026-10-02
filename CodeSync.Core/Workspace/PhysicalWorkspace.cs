@@ -1,6 +1,4 @@
-using CodeSync.Core;
-
-namespace CodeSync.Infrastructure;
+namespace CodeSync.Core;
 
 /// <summary>
 ///   Workspace implementation backed by ordinary directories and files.

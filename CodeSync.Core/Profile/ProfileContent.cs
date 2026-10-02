@@ -3,6 +3,10 @@ namespace CodeSync.Core;
 /// <summary>
 ///   Stores the file snapshots used to execute and verify a synchronization profile.
 /// </summary>
+/// <remarks>
+///   This record represents the content inventory of a synchronization profile,
+///   including snapshots of files in both the source and destination directories.
+/// </remarks>
 public sealed record ProfileContent
 {
     /// <summary>

@@ -14,7 +14,7 @@ public sealed class ScanningTests
 
         var ignoreMatcher = new GitIgnoreMatcher(["obj/", "*.md"]);
 
-        var snapshots = new FileScanner().Scan("source", workspace, ignoreMatcher);
+        var snapshots = new FileScanner(workspace).Scan("source", ignoreMatcher);
 
         Assert.Equal(["src/keep.cs"], snapshots.Select(snapshot => snapshot.Path));
         Assert.Equal(["src/keep.cs"], workspace.ReadPaths);
@@ -30,9 +30,8 @@ public sealed class ScanningTests
 
         var progress = new List<ScanProgress>();
 
-        var snapshots = await new FileScanner().ScanAsync(
+        var snapshots = await new FileScanner(workspace).ScanAsync(
             rootDirectory: "source",
-            workspace: workspace,
             ignoreMatcher: new GitIgnoreMatcher(["*.tmp"]),
             progress: new Progress<ScanProgress>(progress.Add));
 
@@ -56,9 +55,8 @@ public sealed class ScanningTests
 
         var progress = new RecordingProgress();
 
-        await new FileScanner().ScanAsync(
+        await new FileScanner(workspace).ScanAsync(
             rootDirectory: "source",
-            workspace: workspace,
             ignoreMatcher: new GitIgnoreMatcher(Array.Empty<string>()),
             progress: progress);
 
@@ -113,10 +111,10 @@ public sealed class ScanningTests
     public async Task DiscoverThenScanAsync_ReusesTheDiscoveredPathList()
     {
         var workspace = new SyntheticWorkspace(CreateFakeSnapshot("file.cs"));
-        var scanner = new FileScanner();
-        var paths = scanner.Discover("source", workspace);
+        var scanner = new FileScanner(workspace);
+        var paths = scanner.Discover("source");
 
-        await scanner.ScanAsync("source", paths, workspace, new GitIgnoreMatcher(Array.Empty<string>()));
+        await scanner.ScanAsync("source", paths, new GitIgnoreMatcher(Array.Empty<string>()));
 
         Assert.Equal(1, workspace.EnumerationCount);
     }

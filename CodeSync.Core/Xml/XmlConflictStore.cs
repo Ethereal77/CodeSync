@@ -1,8 +1,6 @@
 using System.Text;
 
-using CodeSync.Core;
-
-namespace CodeSync.Infrastructure;
+namespace CodeSync.Core.Xml;
 
 /// <summary>
 ///   A store for versioned conflict reports associated with synchronization profiles
@@ -14,13 +12,13 @@ public sealed class XmlConflictStore : IConflictStore
     public ConflictDocument? Load(string path)
     {
         return File.Exists(path)
-            ? XmlCodecs.DeserializeConflicts(File.ReadAllText(path, Encoding.UTF8))
+            ? XmlConflicts.DeserializeConflicts(File.ReadAllText(path, Encoding.UTF8))
             : null;
     }
 
     /// <inheritdoc/>
     public void Save(string path, ConflictSet conflicts)
     {
-        AtomicTextFile.Write(path, XmlCodecs.SerializeConflicts(conflicts));
+        AtomicTextFile.Write(path, XmlConflicts.SerializeConflicts(conflicts));
     }
 }

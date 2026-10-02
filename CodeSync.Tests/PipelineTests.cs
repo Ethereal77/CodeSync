@@ -1,5 +1,5 @@
 using CodeSync.Core;
-using CodeSync.Infrastructure;
+using CodeSync.Core.Xml;
 
 namespace CodeSync.Tests;
 

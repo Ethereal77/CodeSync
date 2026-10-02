@@ -1,9 +1,7 @@
 using System.Text;
 using System.Xml;
 
-using CodeSync.Core;
-
-namespace CodeSync.Infrastructure;
+namespace CodeSync.Core.Xml;
 
 /// <summary>
 ///   A store for versioned synchronization profiles that persists them using XML.
@@ -155,13 +153,7 @@ public sealed class XmlProfileStore : IProfileStore
         SaveDocuments(path, ProfileDefinition.FromProfile(profile), mergedContent, document.CreatedUtc, now);
     }
 
-    /// <summary>
-    ///   Creates a profile and a complete content inventory from a comparison scan.
-    /// </summary>
-    /// <param name="path">The path to the profile file.</param>
-    /// <param name="profile">The synchronization profile to save.</param>
-    /// <param name="sourceFiles">The source file snapshots.</param>
-    /// <param name="destinationFiles">The destination file snapshots.</param>
+    /// <inheritdoc/>
     public void SaveNew(string path,
                         SyncProfile profile,
                         IEnumerable<FileSnapshot> sourceFiles,
@@ -175,20 +167,15 @@ public sealed class XmlProfileStore : IProfileStore
 
         var content = new ProfileContent(profile.SourceDirectory,
                                          profile.DestinationDirectory,
-                                         now,
-                                         now,
+                                         createdUtc: now,
+                                         lastUpdatedUtc: now,
                                          sourceFiles,
                                          destinationFiles);
 
         SaveDocuments(path, ProfileDefinition.FromProfile(profile), content, now, now);
     }
 
-    /// <summary>
-    ///   Refreshes the content inventory with the latest scan while preserving historical snapshots.
-    /// </summary>
-    /// <param name="path">The path to the profile file.</param>
-    /// <param name="sourceFiles">The source file snapshots.</param>
-    /// <param name="destinationFiles">The destination file snapshots.</param>
+    /// <inheritdoc/>
     public void RefreshContent(string path,
                                IEnumerable<FileSnapshot> sourceFiles,
                                IEnumerable<FileSnapshot> destinationFiles)
@@ -236,7 +223,7 @@ public sealed class XmlProfileStore : IProfileStore
     {
         var xml = File.ReadAllText(path, Encoding.UTF8);
 
-        return XmlCodecs.DeserializeProfile(xml);
+        return XmlProfile.DeserializeProfile(xml);
     }
 
     /// <summary>
@@ -251,7 +238,7 @@ public sealed class XmlProfileStore : IProfileStore
         if (!File.Exists(contentPath))
             throw new InvalidDataException($"The profile content inventory is missing: {contentPath}");
 
-        return XmlCodecs.DeserializeContent(File.ReadAllText(contentPath, Encoding.UTF8));
+        return XmlContent.DeserializeContent(File.ReadAllText(contentPath, Encoding.UTF8));
     }
 
     /// <summary>
@@ -320,7 +307,7 @@ public sealed class XmlProfileStore : IProfileStore
 
         var document = new ProfileDocument(profile, createdUtc, lastUpdatedUtc);
 
-        AtomicTextFile.Write(path, XmlCodecs.SerializeProfile(document), backupExisting: true);
-        AtomicTextFile.Write(ProfileArtifacts.GetContentPath(path), XmlCodecs.SerializeContent(content), backupExisting: true);
+        AtomicTextFile.Write(path, XmlProfile.SerializeProfile(document), backupExisting: true);
+        AtomicTextFile.Write(ProfileArtifacts.GetContentPath(path), XmlContent.SerializeContent(content), backupExisting: true);
     }
 }

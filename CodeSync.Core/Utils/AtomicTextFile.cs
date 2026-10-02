@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace CodeSync.Infrastructure;
+namespace CodeSync.Core;
 
 /// <summary>
 ///   Provides atomic write operations for text files, ensuring that the original file

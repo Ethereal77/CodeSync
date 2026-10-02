@@ -1,5 +1,5 @@
 using CodeSync.Core;
-using CodeSync.Infrastructure;
+using CodeSync.Core.Xml;
 
 namespace CodeSync.Tests;
 
@@ -156,9 +156,9 @@ public sealed class XmlProfileStoreTests
                 ]);
 
             File.WriteAllText(profilePath,
-                              XmlCodecs.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
+                              XmlProfile.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
             File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath),
-                              XmlCodecs.SerializeContent(content));
+                              XmlContent.SerializeContent(content));
 
             var exception = Assert.Throws<ProfileLoadException>(() => new XmlProfileStore().Load(profilePath));
             Assert.Equal(2, exception.Errors.Count);
@@ -247,10 +247,10 @@ public sealed class XmlProfileStoreTests
                 destinationFiles: [new FileSnapshot("lib/file.cs", 1, FixedTime, Hash)]);
 
             File.WriteAllText(profilePath,
-                              XmlCodecs.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
+                              XmlProfile.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
 
             File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath),
-                              XmlCodecs.SerializeContent(content));
+                              XmlContent.SerializeContent(content));
 
             if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
             {
@@ -298,9 +298,9 @@ public sealed class XmlProfileStoreTests
                 destinationFiles: [new FileSnapshot("lib/ignored.cs", 7, FixedTime, Hash)]);
 
             File.WriteAllText(profilePath,
-                              XmlCodecs.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
+                              XmlProfile.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
             File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath),
-                              XmlCodecs.SerializeContent(content));
+                              XmlContent.SerializeContent(content));
 
             var mapping = Assert.Single(new XmlProfileStore().Load(profilePath).FileMappings);
             Assert.True(mapping.IsIgnored);
@@ -344,9 +344,9 @@ public sealed class XmlProfileStoreTests
                 destinationFiles: []);
 
             File.WriteAllText(profilePath,
-                              XmlCodecs.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
+                              XmlProfile.SerializeProfile(new ProfileDocument(definition, FixedTime, FixedTime)));
             File.WriteAllText(ProfileArtifacts.GetContentPath(profilePath),
-                              XmlCodecs.SerializeContent(content));
+                              XmlContent.SerializeContent(content));
 
             var mapping = Assert.Single(new XmlProfileStore().Load(profilePath).FileMappings);
             Assert.True(mapping.IsIgnored);

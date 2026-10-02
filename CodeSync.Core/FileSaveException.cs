@@ -1,4 +1,4 @@
-namespace CodeSync.Infrastructure;
+namespace CodeSync.Core;
 
 /// <summary>
 ///   Represents an error while saving a persisted file.

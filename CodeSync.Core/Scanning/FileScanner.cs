@@ -12,24 +12,37 @@ public sealed class FileScanner
     // Default progress interval for throttled reporting
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
 
+    private readonly IWorkspace workspace;
+
+
+    /// <summary>
+    ///   Initializes a new instance of the <see cref="FileScanner"/> class.
+    /// </summary>
+    /// <param name="workspace">The workspace containing the files to scan.</param>
+    /// <exception cref="ArgumentNullException">
+    ///   Thrown if <paramref name="workspace"/> is <see langword="null"/>.
+    /// </exception>
+    public FileScanner(IWorkspace workspace)
+    {
+        this.workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
+    }
+
 
     /// <summary>
     ///   Scans the specified root directory within the given workspace,
     ///   returning a list of normalized file paths.
     /// </summary>
     /// <param name="rootDirectory">The root directory to scan.</param>
-    /// <param name="workspace">The workspace containing the files to scan.</param>
     /// <exception cref="ArgumentException">
     ///   Thrown if <paramref name="rootDirectory"/> is <see langword="null"/>, empty,
     ///   or consists only of white-space characters.
     /// </exception>
     /// <exception cref="ArgumentNullException">
-    ///   Thrown if <paramref name="workspace"/> or <paramref name="rootDirectory"/> is <see langword="null"/>.
+    ///   Thrown if <paramref name="rootDirectory"/> is <see langword="null"/>.
     /// </exception>
-    public IReadOnlyList<string> Discover(string rootDirectory, IWorkspace workspace)
+    public IReadOnlyList<string> Discover(string rootDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-        ArgumentNullException.ThrowIfNull(workspace);
 
         return workspace.EnumerateFiles(rootDirectory)
             .Select(PathUtils.NormalizeFilePath)
@@ -41,24 +54,20 @@ public sealed class FileScanner
     ///   returning a list of file snapshots that are not ignored.
     /// </summary>
     /// <param name="rootDirectory">The root directory to scan.</param>
-    /// <param name="workspace">The workspace containing the files to scan.</param>
-    /// <param name="ignoreMatcher">The ignore matcher used to filter out ignored files.</param>
+    /// <param name="ignoreMatcher">The ignore matcher used to determine which files should be ignored.</param>
     /// <returns>A list of file snapshots that are not ignored.</returns>
     /// <exception cref="ArgumentException">
-    ///   Thrown if <paramref name="rootDirectory"/> is <see langword="null"/>, empty,
-    ///   or consists only of white-space characters.
+    ///   Thrown if <paramref name="rootDirectory"/> is empty, or consists only of white-space characters.
     /// </exception>
     /// <exception cref="ArgumentNullException">
-    ///   Thrown if <paramref name="workspace"/> or <paramref name="ignoreMatcher"/> is <see langword="null"/>.
+    ///   Thrown if <paramref name="rootDirectory"/>  or <paramref name="ignoreMatcher"/> is <see langword="null"/>.
     /// </exception>
     /// <remarks>
     ///   This method is synchronous and blocks until the scan is complete.
     /// </remarks>
-    public IReadOnlyList<FileSnapshot> Scan(string rootDirectory,
-                                            IWorkspace workspace,
-                                            IIgnoreMatcher ignoreMatcher)
+    public IReadOnlyList<FileSnapshot> Scan(string rootDirectory, IIgnoreMatcher ignoreMatcher)
     {
-        return ScanAsync(rootDirectory, workspace, ignoreMatcher).GetAwaiter().GetResult();
+        return ScanAsync(rootDirectory, ignoreMatcher).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -66,27 +75,24 @@ public sealed class FileScanner
     ///   returning a list of file snapshots that are not ignored.
     /// </summary>
     /// <param name="rootDirectory">The root directory to scan.</param>
-    /// <param name="workspace">The workspace containing the files to scan.</param>
-    /// <param name="ignoreMatcher">The ignore matcher used to filter out ignored files.</param>
+    /// <param name="ignoreMatcher">The ignore matcher used to determine which files should be ignored.</param>
     /// <param name="progress">An optional progress reporter for scan progress updates.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A list of file snapshots that are not ignored.</returns>
     /// <exception cref="ArgumentException">
-    ///   Thrown if <paramref name="rootDirectory"/> is <see langword="null"/>, empty,
-    ///   or consists only of white-space characters.
+    ///   Thrown if <paramref name="rootDirectory"/> is empty, or consists only of white-space characters.
     /// </exception>
     /// <exception cref="ArgumentNullException">
-    ///   Thrown if <paramref name="workspace"/> or <paramref name="ignoreMatcher"/> is <see langword="null"/>.
+    ///   Thrown if <paramref name="rootDirectory"/> or <paramref name="ignoreMatcher"/> is <see langword="null"/>.
     /// </exception>
     public Task<IReadOnlyList<FileSnapshot>> ScanAsync(string rootDirectory,
-                                                       IWorkspace workspace,
                                                        IIgnoreMatcher ignoreMatcher,
                                                        IProgress<ScanProgress>? progress = null,
                                                        CancellationToken cancellationToken = default)
     {
-        var discoveredPaths = Discover(rootDirectory, workspace);
+        var discoveredPaths = Discover(rootDirectory);
 
-        return ScanAsync(rootDirectory, discoveredPaths, workspace, ignoreMatcher, progress, cancellationToken);
+        return ScanAsync(rootDirectory, discoveredPaths, ignoreMatcher, progress, cancellationToken);
     }
 
     /// <summary>
@@ -95,32 +101,27 @@ public sealed class FileScanner
     /// </summary>
     /// <param name="rootDirectory">The root directory to scan.</param>
     /// <param name="discoveredPaths">The list of discovered normalized file paths to scan.</param>
-    /// <param name="workspace">The workspace containing the files to scan.</param>
-    /// <param name="ignoreMatcher">The ignore matcher used to filter out ignored files.</param>
+    /// <param name="ignoreMatcher">The ignore matcher used to determine which files should be ignored.</param>
     /// <param name="progress">An optional progress reporter for scan progress updates.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A list of file snapshots that are not ignored.</returns>
     /// <exception cref="ArgumentException">
-    ///   Thrown if <paramref name="rootDirectory"/> is <see langword="null"/>, empty,
-    ///   or consists only of white-space characters.
+    ///   Thrown if <paramref name="rootDirectory"/> is empty, or consists only of white-space characters.
     /// </exception>
     /// <exception cref="ArgumentNullException">
-    ///   Thrown if <paramref name="workspace"/>, <paramref name="ignoreMatcher"/>, or <paramref name="discoveredPaths"/>
-    ///   is <see langword="null"/>.
+    ///   Thrown if <paramref name="rootDirectory"/>, <paramref name="discoveredPaths"/>, or <paramref name="ignoreMatcher"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="OperationCanceledException">
     ///   Thrown if the operation is canceled via the <paramref name="cancellationToken"/>.
     /// </exception>
     public async Task<IReadOnlyList<FileSnapshot>> ScanAsync(string rootDirectory,
                                                              IReadOnlyCollection<string> discoveredPaths,
-                                                             IWorkspace workspace,
                                                              IIgnoreMatcher ignoreMatcher,
                                                              IProgress<ScanProgress>? progress = null,
                                                              CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         ArgumentNullException.ThrowIfNull(discoveredPaths);
-        ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(ignoreMatcher);
 
         var stopwatch = Stopwatch.StartNew();
